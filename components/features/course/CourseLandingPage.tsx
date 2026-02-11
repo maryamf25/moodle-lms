@@ -10,28 +10,27 @@ interface CourseLandingPageProps {
         id: number;
         fullname: string;
         shortname: string;
-        summary: string; // HTML allowed
+        summary: string;
         imageurl?: string;
         startdate?: number;
     };
     sections: CourseContent[];
     isEnrolled: boolean;
+    price: number; // Added: Fetch this from your server-side page
 }
 
-export default function CourseLandingPage({ course, sections, isEnrolled }: CourseLandingPageProps) {
+export default function CourseLandingPage({ course, sections, isEnrolled, price }: CourseLandingPageProps) {
+    const isPaid = price > 0;
+
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
-            {/* --- Hero Section --- */}
             <CourseHero course={course} />
 
-            {/* --- Main Content Grid --- */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-20">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                    {/* Left Column: Details (2/3 width) */}
+                    {/* Left Column */}
                     <div className="lg:col-span-2 space-y-8">
-
-                        {/* Summary Card */}
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
                             <h2 className="text-2xl font-bold mb-4 text-gray-900">About This Course</h2>
                             <div
@@ -40,15 +39,13 @@ export default function CourseLandingPage({ course, sections, isEnrolled }: Cour
                             />
                         </div>
 
-                        {/* Syllabus / Curriculum */}
                         <Curriculum sections={sections} isEnrolled={isEnrolled} courseId={course.id} />
 
-                        {/* Instructor (Placeholder) */}
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
                             <h2 className="text-2xl font-bold mb-6 text-gray-900">Your Instructor</h2>
                             <div className="flex items-center">
                                 <div className="w-16 h-16 rounded-full bg-gray-200 flex-shrink-0 mr-4 overflow-hidden">
-                                    <img src="https://ui-avatars.com/api/?name=Admin+User&background=random" alt="Instructor" className="w-full h-full object-cover" />
+                                    <img src={`https://ui-avatars.com/api/?name=Admin+User&background=random`} alt="Instructor" className="w-full h-full object-cover" />
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-lg text-gray-900">Course Instructor</h3>
@@ -56,27 +53,35 @@ export default function CourseLandingPage({ course, sections, isEnrolled }: Cour
                                 </div>
                             </div>
                         </div>
-
                     </div>
 
-                    {/* Right Column: Sticky Sidebar (1/3 width) */}
+                    {/* Right Column: Sticky Sidebar */}
                     <div className="lg:col-span-1">
                         <div className="sticky top-24 space-y-6">
-
-                            {/* Enrollment Card */}
                             <div className="bg-white rounded-2xl shadow-xl shadow-blue-900/5 border border-gray-100 p-6 overflow-hidden relative">
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-10 -mt-10 z-0"></div>
 
                                 <div className="relative z-10">
+                                    {/* Dynamic Price Display */}
                                     <div className="flex items-baseline mb-6">
-                                        <span className="text-3xl font-extrabold text-gray-900">Free</span>
-                                        <span className="ml-2 text-sm text-gray-500 line-through opacity-60">$99.00</span>
+                                        <span className="text-3xl font-extrabold text-gray-900">
+                                            {isPaid ? `PKR ${price.toLocaleString()}` : 'Free'}
+                                        </span>
+                                        {isPaid && (
+                                            <span className="ml-2 text-sm text-gray-500 line-through opacity-60">
+                                                PKR {(price * 1.2).toLocaleString()}
+                                            </span>
+                                        )}
                                     </div>
 
-                                    <EnrollmentAction course={course} isEnrolled={isEnrolled} />
-
+                                    {/* Action Button (Now handles redirect logic) */}
+                                  <EnrollmentAction 
+    course={course} 
+    isEnrolled={isEnrolled} 
+    price={price} // <--- ADD THIS LINE
+/>
                                     <p className="text-xs text-center text-gray-400 mt-4">
-                                        30-Day Money-Back Guarantee
+                                        {isPaid ? 'Secure Payment via Safepay' : 'Instant Access'}
                                     </p>
 
                                     <div className="mt-6 space-y-3">
@@ -88,17 +93,12 @@ export default function CourseLandingPage({ course, sections, isEnrolled }: Cour
                                             </li>
                                             <li className="flex items-start">
                                                 <svg className="w-5 h-5 mr-2 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                                <span>Access on mobile and TV</span>
-                                            </li>
-                                            <li className="flex items-start">
-                                                <svg className="w-5 h-5 mr-2 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                                                 <span>Certificate of completion</span>
                                             </li>
                                         </ul>
                                     </div>
                                 </div>
                             </div>
-
                         </div>
                     </div>
 

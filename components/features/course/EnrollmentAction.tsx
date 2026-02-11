@@ -1,45 +1,50 @@
 'use client';
 
-import { useState, useActionState } from 'react';
+import { useState, useActionState, useEffect } from 'react';
 import Link from 'next/link';
 import { quickEnroll } from '@/app/actions/enroll';
 
 interface EnrollmentActionProps {
-    course: {
-        id: number;
-    };
+    course: { id: number };
     isEnrolled: boolean;
+    price: number; // Added price to props
 }
 
-export default function EnrollmentAction({ course, isEnrolled }: EnrollmentActionProps) {
+export default function EnrollmentAction({ course, isEnrolled, price }: EnrollmentActionProps) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isNewUser, setIsNewUser] = useState(true);
 
-    // Server Action Hook
     const [state, formAction, isPending] = useActionState(quickEnroll, {});
 
-    if (state?.success && state?.redirectUrl) {
-        window.location.href = state.redirectUrl;
-    }
+    // Handle redirection to Safepay or Course Page
+    useEffect(() => {
+        if (state?.success && state?.redirectUrl) {
+            window.location.href = state.redirectUrl;
+        }
+    }, [state]);
 
+    // Scenario 1: User is already enrolled (Paid or Free)
     if (isEnrolled) {
         return (
-            <Link href={`/course/${course.id}/learn`} className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-blue-500/30">
+            <Link 
+                href={`/course/${course.id}/learn`} 
+                className="block w-full text-center bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-green-500/30"
+            >
                 Continue Learning
             </Link>
         );
     }
 
+    // Scenario 2: User needs to Enroll/Pay
     return (
         <>
             <button
                 onClick={() => setIsModalOpen(true)}
                 className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-blue-500/30"
             >
-                Enroll Now
+                {price > 0 ? `Enroll & Pay PKR ${price.toLocaleString()}` : 'Enroll Now'}
             </button>
 
-            {/* --- Quick Enroll Modal --- */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative">
@@ -55,7 +60,9 @@ export default function EnrollmentAction({ course, isEnrolled }: EnrollmentActio
                                 {isNewUser ? 'Create your account' : 'Welcome back'}
                             </h2>
                             <p className="text-gray-500 mb-6 text-sm">
-                                {isNewUser ? 'Sign up to enroll in this course.' : 'Log in to continue your enrollment.'}
+                                {price > 0 
+                                    ? `Complete registration to proceed to payment of PKR ${price}.` 
+                                    : 'Sign up to start learning for free.'}
                             </p>
 
                             {state?.error && (
@@ -72,37 +79,36 @@ export default function EnrollmentAction({ course, isEnrolled }: EnrollmentActio
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">First Name</label>
-                                            <input type="text" name="firstname" required className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" placeholder="John" />
+                                            <input type="text" name="firstname" required className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none" placeholder="John" />
                                         </div>
                                         <div>
                                             <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Last Name</label>
-                                            <input type="text" name="lastname" required className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" placeholder="Doe" />
+                                            <input type="text" name="lastname" required className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none" placeholder="Doe" />
                                         </div>
                                     </div>
                                 )}
 
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Email Address</label>
-                                    <input type="email" name="email" required className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" placeholder="you@example.com" />
+                                    <input type="email" name="email" required className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none" placeholder="you@example.com" />
                                 </div>
 
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Password</label>
-                                    <input type="password" name="password" required className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all" placeholder="••••••••" />
+                                    <input type="password" name="password" required className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none" placeholder="••••••••" />
                                 </div>
 
                                 <button
                                     type="submit"
                                     disabled={isPending}
-                                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-blue-500/30 flex justify-center items-center mt-6"
+                                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg flex justify-center items-center mt-6"
                                 >
                                     {isPending ? (
-                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
+                                        <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
                                     ) : (
-                                        isNewUser ? 'Sign Up & Enroll' : 'Login & Enroll'
+                                        isNewUser 
+                                            ? (price > 0 ? 'Sign Up & Pay' : 'Sign Up & Enroll') 
+                                            : (price > 0 ? 'Login & Pay' : 'Login & Enroll')
                                     )}
                                 </button>
                             </form>

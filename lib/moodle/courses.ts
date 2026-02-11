@@ -36,7 +36,45 @@ export async function enrolUser(userId: number, courseId: number) {
         throw error;
     }
 }
+ 
+export async function getCoursePriceInfo(courseId: number) {
+    const params = new URLSearchParams({
+        wstoken: process.env.MOODLE_ADMIN_TOKEN!,
+        wsfunction: 'core_course_get_courses_by_field',
+        moodlewsrestformat: 'json',
+        field: 'id',
+        value: courseId.toString()
+    });
 
+    try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_MOODLE_URL}/webservice/rest/server.php?${params.toString()}`, {
+            cache: 'no-store' 
+        });
+        const data = await response.json();
+
+        // Check terminal for this:
+        console.log("--- MOODLE API RESPONSE ---", JSON.stringify(data, null, 2));
+
+        if (data.courses && data.courses.length > 0) {
+            const course = data.courses[0];
+            
+            // Try to find the field by common shortnames
+            const priceField = course.customfields?.find(
+                (f: any) => f.shortname === 'price' || f.shortname === 'course_price'
+            );
+
+            return {
+                id: course.id,
+                price: priceField ? parseFloat(priceField.value) : 0
+            };
+        }
+    } catch (error) {
+        console.error("Price fetch error:", error);
+    }
+    
+    // Mature Fallback: return 0 instead of null to prevent frontend crashes
+    return { id: courseId, price: 0 };
+}
 // --- 3. FETCH USER COURSES ---
 export async function getUserCourses(token: string, userid: number): Promise<EnrolledCourse[]> {
     const params = new URLSearchParams({

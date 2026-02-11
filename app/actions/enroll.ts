@@ -3,7 +3,9 @@
 
 import { loginUser, registerUser, enrolUser, getUserByEmail, UserData } from '@/lib/moodle/index';
 import { cookies } from 'next/headers';
-
+ 
+import { getCoursePriceInfo } from '@/lib/moodle/courses'; // Import your new helper
+ 
 interface EnrollmentState {
     success?: boolean;
     error?: string;
@@ -85,12 +87,37 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
         const loginRes = await loginUser(username, password);
         if (loginRes.error) throw new Error(loginRes.error);
 
-        // 3. Enroll User (using Admin Token in lib implementation)
+  const courseInfo = await getCoursePriceInfo(courseId);
+        const isPaidCourse = courseInfo && courseInfo.price > 0;
+
+        if (isPaidCourse) {
+            // Generate Safepay Link instead of enrolling
+            const checkoutUrl = await generateSafepayLink(
+                courseId, 
+                courseInfo.price, 
+                userId!.toString()
+            );
+
+            // Set the token first so they are logged in when they return from Safepay
+            const cookieStore = await cookies();
+            cookieStore.set('moodle_token', loginRes.token, {
+                secure: process.env.NODE_ENV === 'production',
+                httpOnly: true,
+                path: '/'
+            });
+
+            return {
+                success: true,
+                redirectUrl: checkoutUrl // Redirect to Safepay Checkout
+            };
+        }
+
+        // 3. ENROLL USER (Only for Free Courses)
         if (userId) {
             await enrolUser(userId, courseId);
         }
 
-        // 4. Set Cookie (Session)
+        // 4. SET COOKIE
         const cookieStore = await cookies();
         cookieStore.set('moodle_token', loginRes.token, {
             secure: process.env.NODE_ENV === 'production',
@@ -98,10 +125,9 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
             path: '/'
         });
 
-        // 5. Return Success
         return {
             success: true,
-            redirectUrl: `/course/${courseId}/learn` // Send them straight to player
+            redirectUrl: `/course/${courseId}/learn`
         };
 
     } catch (error: any) {
@@ -111,4 +137,24 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
         }
         return { error: error.message || 'Enrollment failed' };
     }
+}
+async function generateSafepayLink(courseId: number, amount: number, userId: string) {
+    const baseURL = "https://sandbox.api.getsafepay.com/checkout/render";
+    
+    // Safepay expects amount in paisa (e.g. 100 PKR = 10000)
+    const totalAmountInPaisa = amount * 100;
+
+const params = new URLSearchParams({
+        client: process.env.SAFEPAY_PUBLIC_KEY!,
+        amount: totalAmountInPaisa.toString(),
+        currency: "PKR",
+        environment: "sandbox", 
+        order_id: `CR-${courseId}-${userId}-${Date.now()}`,
+        success_url: `${process.env.NEXT_PUBLIC_URL}/payment-success?courseId=${courseId}`, // Add courseId here for safety
+        cancel_url: `${process.env.NEXT_PUBLIC_URL}/course/${courseId}`,
+        // Safepay specific metadata format
+        "source": "custom",
+        "reference": `USER_${userId}_COURSE_${courseId}` // A clean reference string
+    });
+    return `${baseURL}?${params.toString()}`;
 }

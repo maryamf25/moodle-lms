@@ -10,6 +10,15 @@ interface CourseHeroProps {
 }
 
 export default function CourseHero({ course }: CourseHeroProps) {
+    // Mature approach: Format the date with a fixed locale to prevent hydration mismatches
+    const formatDate = (timestamp: number) => {
+        return new Date(timestamp * 1000).toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+        });
+    };
+
     return (
         <div className="relative bg-gray-900 text-white overflow-hidden">
             {/* Background Image with Overlay */}
@@ -42,7 +51,10 @@ export default function CourseHero({ course }: CourseHeroProps) {
                             <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span>Starts {new Date(course.startdate * 1000).toLocaleDateString()}</span>
+                            {/* suppressHydrationWarning handles any remaining micro-differences */}
+                            <span suppressHydrationWarning>
+                                Starts {formatDate(course.startdate)}
+                            </span>
                         </div>
                     ) : (
                         <div className="flex items-center">
