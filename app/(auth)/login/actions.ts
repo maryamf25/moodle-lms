@@ -28,7 +28,7 @@ export async function getAutoLoginUrlAction(token: string, privateToken: string)
         wstoken: token,
         wsfunction: 'tool_mobile_get_autologin_key',
         moodlewsrestformat: 'json',
-        privatetoken: privateToken
+        privatetoken: privateToken,
     });
 
     try {
@@ -47,7 +47,7 @@ export async function getAutoLoginUrlAction(token: string, privateToken: string)
         if (data.key) {
             return { key: data.key, url: data.autologinurl };
         }
-        
+
         if (data.exception) return { error: `Moodle Error: ${data.message}` };
         return { error: 'No auto-login key returned' };
 

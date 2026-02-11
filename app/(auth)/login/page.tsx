@@ -1,6 +1,6 @@
 'use client';
 import { useState, Suspense } from 'react';
-import { loginUser } from '@/lib/moodle';
+import { loginUser } from '@/lib/moodle/index';
 import { getAutoLoginUrlAction, getUserId } from './actions';
 import { setToken } from '@/utils/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -43,13 +43,24 @@ function LoginForm() {
             // Step 2: Get User ID
             const userId = await getUserId(data.token);
 
-            // Step 3: Get Auto Login Key (Notice: userId argument hata diya hai)
+            // Step 3: Get Auto Login Key
+            // Step 3: Get Auto Login Key
             const autoLoginData = await getAutoLoginUrlAction(data.token, data.privatetoken);
+            console.log("AutoLogin Data:", autoLoginData);
+            if (autoLoginData.key) {
+                // Manually construct URL to ensure userid is included
+                const moodleBaseUrl = process.env.NEXT_PUBLIC_MOODLE_URL;
 
-            // We are using Headless mode primarily, so we just redirect in Next.js
-            // If we wanted to go to Moodle, we would use autoLoginKey.
+                // URL Structure: autologin.php?userid=...&key=...&urltogo=...
+                const finalAutoLoginUrl = `${moodleBaseUrl}/admin/tool/mobile/autologin.php?userid=${userId}&key=${autoLoginData.key}&urltogo=${moodleBaseUrl}/my/`;
 
-            router.push(callbackUrl);
+                console.log("Redirecting to:", finalAutoLoginUrl);
+                window.location.href = finalAutoLoginUrl;
+            } else {
+                // Fallback if no key returned
+                console.error("Auto-login key not found");
+                router.push(callbackUrl);
+            }
 
         } catch (err) {
             setError('Login failed: ' + (err instanceof Error ? err.message : 'Unknown error'));

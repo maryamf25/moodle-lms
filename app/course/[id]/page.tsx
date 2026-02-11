@@ -1,8 +1,8 @@
 
 import { cookies } from 'next/headers';
-import { getCourseContents, getUserCourses, CourseContent } from '@/lib/moodle';
+import { getCourseContents, getUserCourses, CourseContent } from '@/lib/moodle/index';
 import { getUserId } from '@/app/(auth)/login/actions';
-import CourseLandingPage from '@/components/CourseLandingPage';
+import CourseLandingPage from '@/components/features/course/CourseLandingPage';
 import { notFound } from 'next/navigation';
 
 // Reuse the Course interface from app/page.tsx or define in lib

@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { getUserCourses, getUserProfile, EnrolledCourse, UserProfile } from '@/lib/moodle';
+import { getUserCourses, getUserProfile, EnrolledCourse, UserProfile } from '@/lib/moodle/index';
 import { getUserId } from '@/app/(auth)/login/actions';
 
 export default async function Dashboard() {

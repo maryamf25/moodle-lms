@@ -1,7 +1,7 @@
 
 'use server';
 
-import { loginUser, registerUser, enrolUser, getUserByEmail, UserData } from '@/lib/moodle';
+import { loginUser, registerUser, enrolUser, getUserByEmail, UserData } from '@/lib/moodle/index';
 import { cookies } from 'next/headers';
 
 interface EnrollmentState {

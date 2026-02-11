@@ -1,6 +1,9 @@
 
 import Link from "next/link";
 
+export const dynamic = 'force-dynamic';
+
+
 interface Course {
   id: number;
   fullname: string;
@@ -37,16 +40,21 @@ async function getCourses(): Promise<Course[]> {
 
     const text = await res.text();
 
+    let data;
     try {
-      const data = JSON.parse(text);
-      if (data.exception) {
-        throw new Error(`Moodle API Error: ${data.message} (${data.errorcode})`);
-      }
-      return data as Course[];
+      data = JSON.parse(text);
     } catch (e) {
       console.error("Invalid JSON received:", text);
       return [];
     }
+
+    if (data.exception) {
+      console.error(`Moodle API Error: ${data.message} (${data.errorcode})`);
+      return [];
+    }
+
+    return data as Course[];
+
   } catch (error) {
     console.error('Error fetching courses:', error);
     return [];

@@ -2,9 +2,9 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { getCourseContents, getUserCourses, CourseContent } from '@/lib/moodle';
+import { getCourseContents, getUserCourses, CourseContent } from '@/lib/moodle/index';
 import { getUserId } from '@/app/(auth)/login/actions';
-import CoursePlayer from '@/components/CoursePlayer';
+import CoursePlayer from '@/components/features/course/CoursePlayer';
 
 interface PageProps {
     params: Promise<{ id: string }>;

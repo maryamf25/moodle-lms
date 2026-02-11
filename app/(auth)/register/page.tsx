@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { registerUser } from '@/lib/moodle';
+import { registerUser } from '@/lib/moodle/index';
 import { useRouter } from 'next/navigation';
 
 export default function RegisterPage() {

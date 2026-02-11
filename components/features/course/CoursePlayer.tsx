@@ -1,8 +1,7 @@
-
 'use client';
 
 import { useState } from 'react';
-import { CourseContent, Module } from '@/lib/moodle';
+import { CourseContent, Module } from '@/lib/moodle/index';
 
 interface CoursePlayerProps {
     courseId: number;
@@ -12,9 +11,6 @@ interface CoursePlayerProps {
 
 export default function CoursePlayer({ courseId, courseName, sections }: CoursePlayerProps) {
     const [selectedModule, setSelectedModule] = useState<Module | null>(null);
-
-    // Initial state: Select first module of first section if available? Or show welcome.
-    // Let's just show Welcome.
 
     return (
         <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-white">
