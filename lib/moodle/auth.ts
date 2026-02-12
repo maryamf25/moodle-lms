@@ -10,7 +10,12 @@ export async function loginUser(username: string, password: string): Promise<{ t
             service: SERVICE || 'moodle_mobile_app',
         });
 
-        const response = await fetch(`${BASE_URL}/login/token.php?${params.toString()}`);
+        const response = await fetch(`${BASE_URL}/login/token.php?${params.toString()}`, {
+            method: 'POST', // GET bhi chalta hai, par headers ke liye object zaroori hai
+            headers: {
+                'User-Agent': 'MoodleMobile/4.4.0 (Linux; Android 14)', // Ye header zaroori hai private token ke liye
+            }
+        });
         if (!response.ok) {
             throw new Error(`Login failed with status: ${response.status}`);
         }

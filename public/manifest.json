@@ -1,0 +1,15 @@
+{
+    "name": "EduMeUp Clone",
+    "short_name": "EduMeUp",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#2563eb",
+    "icons": [
+        {
+            "src": "/file.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        }
+    ]
+}

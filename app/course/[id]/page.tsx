@@ -1,10 +1,10 @@
 
 import { cookies } from 'next/headers';
-import { getCourseContents, getUserCourses, CourseContent,getCoursePriceInfo } from '@/lib/moodle/index';
+import { getCourseContents, getUserCourses, CourseContent, getCoursePriceInfo } from '@/lib/moodle/index';
 import { getUserId } from '@/app/(auth)/login/actions';
 import CourseLandingPage from '@/components/features/course/CourseLandingPage';
 import { notFound } from 'next/navigation';
- 
+
 // Reuse the Course interface from app/page.tsx or define in lib
 interface PublicCourse {
     id: number;
@@ -57,8 +57,8 @@ export default async function CourseLandingContainer({ params }: CoursePageProps
     const { id } = await params;
     console.log("--- TRIGGERED: Page loading for course", id);
 
-  
- 
+
+
     const cookieStore = await cookies();
     const userToken = cookieStore.get('moodle_token')?.value;
     const courseId = parseInt(id);
@@ -102,24 +102,25 @@ export default async function CourseLandingContainer({ params }: CoursePageProps
     const imageurl = course.overviewfiles && course.overviewfiles.length > 0
         ? `${course.overviewfiles[0].fileurl}?token=${systemToken}`
         : undefined;
-// 4. Fetch the real price from Moodle Custom Fields
-  const priceData = await getCoursePriceInfo(Number(id));
+    // 4. Fetch the real price from Moodle Custom Fields
+    const priceData = await getCoursePriceInfo(Number(id));
     console.log("--- PRICE DATA RESULT:", priceData);
 
-// 5. Prepare the refined course object for the UI
-const refinedCourse = {
-    ...course,
-    imageurl: course.overviewfiles?.[0]?.fileurl 
-        ? `${course.overviewfiles[0].fileurl}?token=${systemToken}` 
-        : undefined
-};
+    // 5. Prepare the refined course object for the UI
+    const refinedCourse = {
+        ...course,
+        imageurl: course.overviewfiles?.[0]?.fileurl
+            ? `${course.overviewfiles[0].fileurl}?token=${systemToken}`
+            : undefined
+    };
 
-return (
-    <CourseLandingPage 
-        course={refinedCourse} 
-        price={priceData?.price ?? 0} // Injected real price
-        isEnrolled={isEnrolled}
-        sections={sections}
-    />
-);
+    return (
+        <CourseLandingPage
+            course={refinedCourse}
+            price={priceData?.price ?? 0} // Injected real price
+            isEnrolled={isEnrolled}
+            sections={sections}
+            isLoggedIn={!!userToken} // New prop
+        />
+    );
 }

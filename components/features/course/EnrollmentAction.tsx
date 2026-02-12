@@ -3,31 +3,54 @@
 import { useState, useActionState, useEffect } from 'react';
 import Link from 'next/link';
 import { quickEnroll } from '@/app/actions/enroll';
+import { enrollExistingUser } from '@/app/actions/enrollExisting';
 
 interface EnrollmentActionProps {
     course: { id: number };
     isEnrolled: boolean;
-    price: number; // Added price to props
+    price: number;
+    isLoggedIn: boolean; // Added
 }
 
-export default function EnrollmentAction({ course, isEnrolled, price }: EnrollmentActionProps) {
+export default function EnrollmentAction({ course, isEnrolled, price, isLoggedIn }: EnrollmentActionProps) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isNewUser, setIsNewUser] = useState(true);
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
     const [state, formAction, isPending] = useActionState(quickEnroll, {});
 
-    // Handle redirection to Safepay or Course Page
+    // Handle redirection to Safepay or Course Page (for modal flow)
     useEffect(() => {
         if (state?.success && state?.redirectUrl) {
             window.location.href = state.redirectUrl;
         }
     }, [state]);
 
+    // Handle existing user enrollment click
+    const handleEnrollExisting = async () => {
+        setIsLoading(true);
+        setErrorMessage('');
+        try {
+            const result = await enrollExistingUser(course.id);
+            if (result.success && result.redirectUrl) {
+                window.location.href = result.redirectUrl;
+            } else if (result.error) {
+                setErrorMessage(result.error);
+                setIsLoading(false);
+            }
+        } catch (e) {
+            console.error(e);
+            setErrorMessage('Something went wrong. Please try again.');
+            setIsLoading(false);
+        }
+    };
+
     // Scenario 1: User is already enrolled (Paid or Free)
     if (isEnrolled) {
         return (
-            <Link 
-                href={`/course/${course.id}/learn`} 
+            <Link
+                href={`/course/${course.id}/learn`}
                 className="block w-full text-center bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-green-500/30"
             >
                 Continue Learning
@@ -35,7 +58,31 @@ export default function EnrollmentAction({ course, isEnrolled, price }: Enrollme
         );
     }
 
-    // Scenario 2: User needs to Enroll/Pay
+    // Scenario 2: User is Logged In but NOT Enrolled
+    if (isLoggedIn) {
+        return (
+            <div className="space-y-4">
+                <button
+                    onClick={handleEnrollExisting}
+                    disabled={isLoading}
+                    className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-blue-500/30 flex justify-center items-center"
+                >
+                    {isLoading ? (
+                        <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
+                    ) : (
+                        price > 0 ? `Pay PKR ${price.toLocaleString()}` : 'Enroll Now'
+                    )}
+                </button>
+                {errorMessage && (
+                    <p className="text-sm text-red-600 text-center font-medium bg-red-50 p-2 rounded-lg">
+                        {errorMessage}
+                    </p>
+                )}
+            </div>
+        );
+    }
+
+    // Scenario 3: User needs to Login/Signup to Enroll
     return (
         <>
             <button
@@ -60,8 +107,8 @@ export default function EnrollmentAction({ course, isEnrolled, price }: Enrollme
                                 {isNewUser ? 'Create your account' : 'Welcome back'}
                             </h2>
                             <p className="text-gray-500 mb-6 text-sm">
-                                {price > 0 
-                                    ? `Complete registration to proceed to payment of PKR ${price}.` 
+                                {price > 0
+                                    ? `Complete registration to proceed to payment of PKR ${price}.`
                                     : 'Sign up to start learning for free.'}
                             </p>
 
@@ -106,8 +153,8 @@ export default function EnrollmentAction({ course, isEnrolled, price }: Enrollme
                                     {isPending ? (
                                         <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
                                     ) : (
-                                        isNewUser 
-                                            ? (price > 0 ? 'Sign Up & Pay' : 'Sign Up & Enroll') 
+                                        isNewUser
+                                            ? (price > 0 ? 'Sign Up & Pay' : 'Sign Up & Enroll')
                                             : (price > 0 ? 'Login & Pay' : 'Login & Enroll')
                                     )}
                                 </button>

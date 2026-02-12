@@ -16,10 +16,11 @@ interface CourseLandingPageProps {
     };
     sections: CourseContent[];
     isEnrolled: boolean;
-    price: number; // Added: Fetch this from your server-side page
+    price: number;
+    isLoggedIn: boolean; // Added isLoggedIn
 }
 
-export default function CourseLandingPage({ course, sections, isEnrolled, price }: CourseLandingPageProps) {
+export default function CourseLandingPage({ course, sections, isEnrolled, price, isLoggedIn }: CourseLandingPageProps) {
     const isPaid = price > 0;
 
     return (
@@ -75,11 +76,12 @@ export default function CourseLandingPage({ course, sections, isEnrolled, price 
                                     </div>
 
                                     {/* Action Button (Now handles redirect logic) */}
-                                  <EnrollmentAction 
-    course={course} 
-    isEnrolled={isEnrolled} 
-    price={price} // <--- ADD THIS LINE
-/>
+                                    <EnrollmentAction
+                                        course={course}
+                                        isEnrolled={isEnrolled}
+                                        price={price}
+                                        isLoggedIn={isLoggedIn} // <--- ADD THIS LINE
+                                    />
                                     <p className="text-xs text-center text-gray-400 mt-4">
                                         {isPaid ? 'Secure Payment via Safepay' : 'Instant Access'}
                                     </p>
