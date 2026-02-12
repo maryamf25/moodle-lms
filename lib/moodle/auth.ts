@@ -1,6 +1,44 @@
 import { BASE_URL, SERVICE } from './api';
 import { UserData } from './types';
 
+interface MoodleErrorResponse {
+    exception?: string;
+    errorcode?: string;
+    message?: string;
+}
+
+interface MoodleSignupSuccessResponse {
+    success?: boolean;
+    warnings?: Array<{ item?: string; itemid?: number; warningcode?: string; message?: string }>;
+}
+
+export interface RegisterUserResult {
+    id: number;
+    username: string;
+    requiresEmailConfirmation?: boolean;
+    nextStepMessage?: string;
+}
+
+export interface RegisterUserErrorDetails {
+    stage: string;
+    wsfunction?: string;
+    status?: number;
+    moodleException?: string;
+    moodleErrorCode?: string;
+    moodleMessage?: string;
+    rawResponse?: string;
+}
+
+export class RegisterUserError extends Error {
+    details: RegisterUserErrorDetails;
+
+    constructor(message: string, details: RegisterUserErrorDetails) {
+        super(message);
+        this.name = 'RegisterUserError';
+        this.details = details;
+    }
+}
+
 // --- 1. LOGIN FUNCTION ---
 export async function loginUser(username: string, password: string): Promise<{ token: string; privatetoken?: string; error?: string }> {
     try {
@@ -89,37 +127,75 @@ export async function getAutoLoginUrl(token: string, privateToken: string): Prom
 }
 
 // --- 2. REGISTER FUNCTION ---
-export async function registerUser(userData: UserData) {
-    try {
-        const params = new URLSearchParams({
-            wstoken: process.env.MOODLE_ADMIN_TOKEN!, // Needs an admin/service token with permission
-            wsfunction: 'auth_email_signup_user', // Or core_user_create_users
-            moodlewsrestformat: 'json',
+export async function registerUser(userData: UserData): Promise<RegisterUserResult> {
+    if (!BASE_URL) {
+        throw new RegisterUserError('NEXT_PUBLIC_MOODLE_URL is not configured', {
+            stage: 'preflight',
         });
-
-        // Note: auth_email_signup_user takes custom data structure. 
-        // core_user_create_users is usually preferred for admin creation.
-        // Let's use core_user_create_users as it is standard for "creating" users via API if we have admin token.
-        // If this is self-registration, we might need a different approach.
-
-        // Replicating original logic which seemed to be `core_user_create_users` based on "users[0][...]" params usually used there.
-        const bodyParams = new URLSearchParams();
-        bodyParams.append('users[0][username]', userData.username);
-        bodyParams.append('users[0][password]', userData.password);
-        bodyParams.append('users[0][firstname]', userData.firstname);
-        bodyParams.append('users[0][lastname]', userData.lastname);
-        bodyParams.append('users[0][email]', userData.email);
-        // Add other fields as necessary
-
-        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`, {
-            method: 'POST',
-            body: bodyParams,
-        });
-
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error('Registration error:', error);
-        throw error;
     }
+
+    const signupToken = process.env.MOODLE_SIGNUP_TOKEN;
+    if (!signupToken) {
+        throw new RegisterUserError('MOODLE_SIGNUP_TOKEN is not configured', {
+            stage: 'preflight',
+        });
+    }
+
+    return registerViaAuthEmailSignupUser(userData, signupToken);
+}
+
+async function registerViaAuthEmailSignupUser(userData: UserData, token: string): Promise<RegisterUserResult> {
+    const wsfunction = 'auth_email_signup_user';
+    const bodyParams = new URLSearchParams();
+    bodyParams.append('username', userData.username);
+    bodyParams.append('password', userData.password);
+    bodyParams.append('firstname', userData.firstname);
+    bodyParams.append('lastname', userData.lastname);
+    bodyParams.append('email', userData.email);
+
+    const url = `${BASE_URL}/webservice/rest/server.php?wstoken=${encodeURIComponent(token)}&wsfunction=${wsfunction}&moodlewsrestformat=json`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: bodyParams.toString(),
+    });
+
+    if (!response.ok) {
+        throw new RegisterUserError(`Registration failed with status: ${response.status}`, {
+            stage: 'http-fallback',
+            wsfunction,
+            status: response.status,
+        });
+    }
+
+    const data: unknown = await response.json();
+    const moodleError = data as MoodleErrorResponse;
+    if (moodleError.exception || moodleError.errorcode) {
+        throw new RegisterUserError(moodleError.message || 'Moodle returned an API error', {
+            stage: 'moodle-response-fallback',
+            wsfunction,
+            moodleException: moodleError.exception,
+            moodleErrorCode: moodleError.errorcode,
+            moodleMessage: moodleError.message,
+        });
+    }
+
+    const parsed = data as MoodleSignupSuccessResponse;
+    const isSuccessResponse = data === true || (typeof data === 'object' && data !== null && parsed.success === true);
+
+    if (!isSuccessResponse) {
+        throw new RegisterUserError('Moodle signup did not return success=true.', {
+            stage: 'response-parse-fallback',
+            wsfunction,
+            rawResponse: JSON.stringify(data),
+        });
+    }
+    return {
+        id: 0,
+        username: userData.username,
+        requiresEmailConfirmation: true,
+        nextStepMessage: 'Registration submitted. Please check your email and confirm your account.',
+    };
 }
