@@ -3,9 +3,9 @@
 
 import { loginUser, registerUser, enrolUser, getUserByEmail, UserData } from '@/lib/moodle/index';
 import { cookies } from 'next/headers';
- 
+import { redirect } from 'next/navigation';
 import { getCoursePriceInfo } from '@/lib/moodle/courses'; // Import your new helper
- 
+import { isRedirectError } from 'next/dist/client/components/redirect-error';
 interface EnrollmentState {
     success?: boolean;
     error?: string;
@@ -91,27 +91,22 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
         const isPaidCourse = courseInfo && courseInfo.price > 0;
 
         if (isPaidCourse) {
-            // Generate Safepay Link instead of enrolling
-            const checkoutUrl = await generateSafepayLink(
-                courseId, 
-                courseInfo.price, 
-                userId!.toString()
-            );
+        const checkoutUrl = await generateSafepayLink(
+            courseId, 
+            courseInfo.price, 
+            userId!.toString()
+        );
 
-            // Set the token first so they are logged in when they return from Safepay
-            const cookieStore = await cookies();
-            cookieStore.set('moodle_token', loginRes.token, {
-                secure: process.env.NODE_ENV === 'production',
-                httpOnly: true,
-                path: '/'
-            });
+        const cookieStore = await cookies();
+        cookieStore.set('moodle_token', loginRes.token, {
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
+            path: '/'
+        });
 
-            return {
-                success: true,
-                redirectUrl: checkoutUrl // Redirect to Safepay Checkout
-            };
-        }
-
+        // 2. CALL REDIRECT HERE
+        redirect(checkoutUrl); 
+    }
         // 3. ENROLL USER (Only for Free Courses)
         if (userId) {
             await enrolUser(userId, courseId);
@@ -131,30 +126,66 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
         };
 
     } catch (error: any) {
-        console.error("Quick Enroll Error:", error);
-        if (error.message && error.message.includes('Access control exception')) {
-            return { error: 'Server Error: The Moodle API Token does not have permission to create users. Please check "core_user_create_users" capability in Moodle.' };
-        }
-        return { error: error.message || 'Enrollment failed' };
+   // Mature check: Next.js redirects are technically special "errors"
+    if (error.message === 'NEXT_REDIRECT' || error.digest?.includes('NEXT_REDIRECT')) {
+        throw error; 
+    }
+
+    console.error("Actual Enrollment Error:", error);
+    return { error: error.message || 'Enrollment failed' };
     }
 }
 async function generateSafepayLink(courseId: number, amount: number, userId: string) {
-    const baseURL = "https://sandbox.api.getsafepay.com/checkout/render";
-    
-    // Safepay expects amount in paisa (e.g. 100 PKR = 10000)
-    const totalAmountInPaisa = amount * 100;
+    try {
+        const response = await fetch("https://sandbox.api.getsafepay.com/order/v1/init", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                client: process.env.SAFEPAY_PUBLIC_KEY,
+                amount: Number(amount), // Ensure it's a number, not "100"
+                currency: "PKR",
+                environment: "sandbox",
+                mode: "payment",
+                intent: "CYBERSOURCE",
+                redirect_url: `${process.env.NEXT_PUBLIC_URL}/payment-success`,
+                cancel_url: `${process.env.NEXT_PUBLIC_URL}/course/${courseId}`,
+                // ADD THESE FOR BETTER REDIRECT HANDLING:
+// ADD THIS:
+    metadata: {
+        order_id: `${courseId}-${userId}`
+    },
+    configuration: {
+        success_url: `${process.env.NEXT_PUBLIC_URL}/payment-success`,
+        auto_redirect: true // Some API versions support this flag
+    }
+            })
+        });
 
-const params = new URLSearchParams({
-        client: process.env.SAFEPAY_PUBLIC_KEY!,
-        amount: totalAmountInPaisa.toString(),
-        currency: "PKR",
-        environment: "sandbox", 
-        order_id: `CR-${courseId}-${userId}-${Date.now()}`,
-        success_url: `${process.env.NEXT_PUBLIC_URL}/payment-success?courseId=${courseId}`, // Add courseId here for safety
-        cancel_url: `${process.env.NEXT_PUBLIC_URL}/course/${courseId}`,
-        // Safepay specific metadata format
-        "source": "custom",
-        "reference": `USER_${userId}_COURSE_${courseId}` // A clean reference string
-    });
-    return `${baseURL}?${params.toString()}`;
+        const resData = await response.json();
+        
+        // Debug: Log the response to see if Safepay is returning an error message
+        console.log("Safepay Init Response:", JSON.stringify(resData));
+
+        if (!resData.status || !resData.data?.token) {
+            throw new Error(resData.status?.message || 'No token received');
+        }
+
+        
+  const token = resData.data.token;
+const publicKey = process.env.SAFEPAY_PUBLIC_KEY!;
+const baseUrl = "https://sandbox.api.getsafepay.com/checkout";
+
+// 2. Use the standard parameter mapping
+const url = `${baseUrl}?env=sandbox` +
+            `&beacon=${token}` +
+            `&client_id=${publicKey}` + // Use client_id here
+            `&order_id=${courseId}-${userId}`; // Remove source=custom
+
+console.log("🔗 ATTEMPTING NEW ENDPOINT:", url);
+return url;
+
+    } catch (error: any) {
+        console.error("❌ SAFEPAY ERROR:", error.message);
+        return `${process.env.NEXT_PUBLIC_URL}/payment-error`;
+    }
 }

@@ -55,7 +55,7 @@ async function getPublicCourse(courseId: number): Promise<PublicCourse | null> {
 
 export default async function CourseLandingContainer({ params }: CoursePageProps) {
     const { id } = await params;
-    console.log("--- TRIGGERED: Page loading for course", id);
+ 
 
 
 
@@ -104,7 +104,7 @@ export default async function CourseLandingContainer({ params }: CoursePageProps
         : undefined;
     // 4. Fetch the real price from Moodle Custom Fields
     const priceData = await getCoursePriceInfo(Number(id));
-    console.log("--- PRICE DATA RESULT:", priceData);
+ 
 
     // 5. Prepare the refined course object for the UI
     const refinedCourse = {

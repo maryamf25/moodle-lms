@@ -1,33 +1,34 @@
-// app/api/webhook/safepay/route.ts
-import { enrolUser } from "@/lib/moodle/courses";
-import { NextResponse } from "next/server";
-
+import { NextResponse } from 'next/server';
+import { enrolUser } from '@/lib/moodle/index';
 export async function POST(req: Request) {
     try {
         const body = await req.json();
         
-        // Safepay nesting: data -> notification -> metadata
-        const notification = body?.data?.notification;
-        const metadata = notification?.metadata;
+        // 1. Get the notification object
+        const notification = body.data?.notification;
+        const state = notification?.state;
+        
+        // 2. Extract order_id from the correct nested path
+        // It's inside data -> notification -> metadata
+        const orderId = notification?.metadata?.order_id; 
 
-        // Safepay sometimes sends metadata as an array or an object
-        // This helper extracts the value regardless of the format
-        const courseId = metadata?.courseId || metadata?.course_id;
-        const userId = metadata?.userId || metadata?.user_id;
+        console.log(`DEBUG: State is ${state}, OrderID is ${orderId}`);
 
-        console.log("--- SAFEPAY WEBHOOK RECEIVED ---");
-        console.log("Full Metadata received:", metadata);
-        console.log(`Parsed -> Course: ${courseId}, User: ${userId}`);
-
-        if (notification?.state === "PAID" && courseId && userId) {
-            console.log("✅ Data valid. Enrolling in Moodle...");
-            await enrolUser(Number(userId), Number(courseId));
-            return NextResponse.json({ message: "Enrollment Successful" });
+        if (state === 'PAID' && orderId) {
+            const [courseId, userId] = orderId.split('-').map(Number);
+            
+            console.log(`✅ WEBHOOK ENROLLING: User ${userId} into Course ${courseId}`);
+            
+            const enrollment = await enrolUser(userId, courseId);
+            console.log("Enrollment Result:", enrollment);
+            
+            return NextResponse.json({ status: 'success' });
         }
 
-        return NextResponse.json({ message: "Metadata missing or unpaid" });
-    } catch (err: any) {
-        console.error("Webhook error:", err.message);
-        return NextResponse.json({ error: "Internal Error" }, { status: 500 });
+        console.log("⚠️ Webhook ignored: Condition not met.");
+        return NextResponse.json({ status: 'ignored' });
+    } catch (error: any) {
+        console.error("❌ WEBHOOK ERROR:", error.message);
+        return NextResponse.json({ error: 'Failed' }, { status: 500 });
     }
 }
