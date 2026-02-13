@@ -2,6 +2,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getDashboardPathForRole, normalizeRole, roleFromDashboardPath } from '@/lib/auth/roles';
+const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
+
+function authLog(message: string, data?: Record<string, unknown>) {
+    if (!AUTH_DEBUG) return;
+    if (data) {
+        console.log(`[auth][middleware] ${message}`, data);
+        return;
+    }
+    console.log(`[auth][middleware] ${message}`);
+}
 
 export function middleware(request: NextRequest) {
     const token = request.cookies.get('moodle_token')?.value;
@@ -21,8 +31,15 @@ export function middleware(request: NextRequest) {
     // Paths that are for guests only (like login/register)
     const authPaths = ['/login', '/register'];
     const isAuthPath = authPaths.some((path) => pathname.startsWith(path));
+    authLog('request', {
+        pathname,
+        hasToken: Boolean(token),
+        roleCookie: roleCookie ?? null,
+        normalizedRole: role,
+    });
 
     if (isProtected && !token) {
+        authLog('redirecting unauthenticated user to login', { pathname });
         const loginUrl = new URL('/login', request.url);
         loginUrl.searchParams.set('callbackUrl', pathname); // Optional: remember where user wanted to go
         return NextResponse.redirect(loginUrl);
@@ -30,22 +47,41 @@ export function middleware(request: NextRequest) {
 
     if (token) {
         if (pathname === '/dashboard' && role) {
+            authLog('redirecting /dashboard to role dashboard', {
+                role,
+                target: getDashboardPathForRole(role),
+            });
             return NextResponse.redirect(new URL(getDashboardPathForRole(role), request.url));
         }
 
         const requiredRoleForPath = roleFromDashboardPath(pathname);
         if (requiredRoleForPath && !role) {
+            authLog('missing role cookie for role path, redirecting to /dashboard', {
+                pathname,
+                requiredRoleForPath,
+            });
             return NextResponse.redirect(new URL('/dashboard', request.url));
         }
         if (requiredRoleForPath && role && requiredRoleForPath !== role) {
+            authLog('role mismatch redirect', {
+                pathname,
+                requiredRoleForPath,
+                actualRole: role,
+                target: getDashboardPathForRole(role),
+            });
             return NextResponse.redirect(new URL(getDashboardPathForRole(role), request.url));
         }
     }
 
     if (isAuthPath && token) {
         if (!role) {
+            authLog('authenticated user without role on auth page, redirecting to /dashboard');
             return NextResponse.redirect(new URL('/dashboard', request.url));
         }
+        authLog('authenticated user on auth page, redirecting by role', {
+            role,
+            target: getDashboardPathForRole(role),
+        });
         return NextResponse.redirect(new URL(getDashboardPathForRole(role), request.url));
     }
 

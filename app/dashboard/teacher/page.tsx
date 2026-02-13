@@ -1,3 +1,159 @@
-import DashboardPage from '../page';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { getDashboardPathForRole, normalizeRole } from '@/lib/auth/roles';
+import { getUserCourses, getUserProfile, EnrolledCourse, UserProfile } from '@/lib/moodle';
+import { getUserId } from '@/app/(auth)/login/actions';
 
-export default DashboardPage;
+function calculateAverageProgress(courses: EnrolledCourse[]): number {
+    if (courses.length === 0) return 0;
+    const total = courses.reduce((sum, course) => sum + (course.progress || 0), 0);
+    return Math.round(total / courses.length);
+}
+
+export default async function TeacherDashboardPage() {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('moodle_token')?.value;
+    const roleCookie = cookieStore.get('moodle_role')?.value;
+    const roleFromCookie = roleCookie ? normalizeRole(roleCookie) : null;
+
+    if (!token) redirect('/login');
+    if (!roleFromCookie) redirect('/dashboard');
+    if (roleFromCookie !== 'teacher') {
+        redirect(getDashboardPathForRole(roleFromCookie));
+    }
+
+    let courses: EnrolledCourse[] = [];
+    let userProfile: UserProfile | null = null;
+    let error = '';
+
+    try {
+        const userid = await getUserId(token);
+        const [coursesData, profileData] = await Promise.all([
+            getUserCourses(token, userid),
+            getUserProfile(token),
+        ]);
+        courses = coursesData;
+        userProfile = profileData;
+    } catch (err: unknown) {
+        error = err instanceof Error ? err.message : 'Failed to load teacher dashboard';
+    }
+
+    const hiddenCourses = courses.filter((course) => course.visible === 0).length;
+    const avgProgress = calculateAverageProgress(courses);
+
+    return (
+        <div className="min-h-screen bg-slate-50">
+            <nav className="bg-white border-b">
+                <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+                    <Link href="/" className="text-xl font-bold text-indigo-600">EduMeUp Clone</Link>
+                    <div className="flex items-center gap-3">
+                        <a
+                            href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/course/management.php`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
+                        >
+                            Course Management
+                        </a>
+                        <form action={async () => {
+                            'use server';
+                            const { cookies } = await import('next/headers');
+                            (await cookies()).delete('moodle_token');
+                            (await cookies()).delete('moodle_role');
+                            redirect('/login');
+                        }}>
+                            <button type="submit" className="text-sm text-gray-600 hover:text-gray-900">Sign out</button>
+                        </form>
+                    </div>
+                </div>
+            </nav>
+
+            <main className="max-w-7xl mx-auto px-4 py-8">
+                <h1 className="text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
+                <p className="text-gray-600 mt-1">
+                    {userProfile ? `Welcome, ${userProfile.firstname || userProfile.fullname}.` : 'Manage your teaching space.'}
+                </p>
+
+                {error && (
+                    <div className="mt-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+                        {error}
+                    </div>
+                )}
+
+                <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-white border rounded-lg p-5">
+                        <p className="text-sm text-gray-500">Teaching Courses</p>
+                        <p className="text-3xl font-bold text-gray-900 mt-2">{courses.length}</p>
+                    </div>
+                    <div className="bg-white border rounded-lg p-5">
+                        <p className="text-sm text-gray-500">Hidden Courses</p>
+                        <p className="text-3xl font-bold text-gray-900 mt-2">{hiddenCourses}</p>
+                    </div>
+                    <div className="bg-white border rounded-lg p-5">
+                        <p className="text-sm text-gray-500">Avg Learner Progress</p>
+                        <p className="text-3xl font-bold text-gray-900 mt-2">{avgProgress}%</p>
+                    </div>
+                </div>
+
+                <div className="mt-8 bg-white border rounded-lg p-5">
+                    <h2 className="text-lg font-semibold text-gray-900">Instructor Actions</h2>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                        <a
+                            href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/course/edit.php?category=1`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                        >
+                            Create Course
+                        </a>
+                        <a
+                            href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/grade/report/grader/index.php`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-50"
+                        >
+                            Open Gradebook
+                        </a>
+                    </div>
+                </div>
+
+                <h2 className="text-xl font-semibold text-gray-900 mt-8">Course Workspace</h2>
+                <div className="mt-4 space-y-3">
+                    {courses.length === 0 ? (
+                        <div className="bg-white border rounded-lg p-8 text-center text-gray-500">
+                            No teaching courses found for this account.
+                        </div>
+                    ) : (
+                        courses.map((course) => (
+                            <div key={course.id} className="bg-white border rounded-lg p-4 flex items-center justify-between gap-4">
+                                <div>
+                                    <h3 className="font-semibold text-gray-900">{course.fullname}</h3>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Visibility: {course.visible === 0 ? 'Hidden' : 'Visible'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Link
+                                        href={`/course/${course.id}/learn`}
+                                        className="px-3 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                                    >
+                                        Open Classroom
+                                    </Link>
+                                    <a
+                                        href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/course/view.php?id=${course.id}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+                                    >
+                                        Edit Course
+                                    </a>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </main>
+        </div>
+    );
+}

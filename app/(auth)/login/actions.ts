@@ -7,6 +7,16 @@ import { getUserSessionContext } from '@/lib/moodle/user';
 import { loginUser } from '@/lib/moodle/auth';
 import { cookies } from 'next/headers';
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
+
+function authLog(message: string, data?: Record<string, unknown>) {
+    if (!AUTH_DEBUG) return;
+    if (data) {
+        console.log(`[auth][login] ${message}`, data);
+        return;
+    }
+    console.log(`[auth][login] ${message}`);
+}
 
 export async function getUserId(token: string) {
     const session = await getUserSessionContext(token);
@@ -61,6 +71,7 @@ export async function getUserSessionAction(token: string) {
 interface LoginActionResult {
     success: boolean;
     redirectPath?: string;
+    role?: string;
     error?: string;
 }
 
@@ -69,9 +80,18 @@ export async function loginWithCredentialsAction(
     password: string,
     callbackUrl?: string | null
 ): Promise<LoginActionResult> {
+    authLog('login started', {
+        username,
+        hasCallbackUrl: Boolean(callbackUrl),
+    });
+
     const loginResult = await loginUser(username, password);
 
     if (!loginResult.token) {
+        authLog('login failed at token request', {
+            username,
+            error: loginResult.error || 'no_token',
+        });
         return { success: false, error: loginResult.error || 'Invalid credentials' };
     }
 
@@ -92,9 +112,24 @@ export async function loginWithCredentialsAction(
         secure: process.env.NODE_ENV === 'production',
         path: '/',
     });
+    console.log('[auth][login] resolved role for user', {
+        username: session.username,
+        userid: session.userid,
+        resolvedRole: session.role,
+        redirectPath: safeCallbackUrl || dashboardPath,
+    });
+    authLog('login success and cookies set', {
+        userid: session.userid,
+        username: session.username,
+        resolvedRole: session.role,
+        dashboardPath,
+        redirectPath: safeCallbackUrl || dashboardPath,
+        roleCookieValue: session.role,
+    });
 
     return {
         success: true,
         redirectPath: safeCallbackUrl || dashboardPath,
+        role: session.role,
     };
 }

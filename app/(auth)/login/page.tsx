@@ -34,6 +34,11 @@ function LoginForm() {
                 return;
             }
 
+            console.log('[auth][client] login result', {
+                username: formData.username,
+                resolvedRole: result.role,
+                redirectPath: result.redirectPath,
+            });
             router.push(result.redirectPath);
 
         } catch (err) {
