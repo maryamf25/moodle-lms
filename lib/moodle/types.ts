@@ -70,4 +70,5 @@ export interface UserProfile {
     email: string;
     profileimageurlsmall: string;
     profileimageurl: string;
+    role: 'admin' | 'teacher' | 'student';
 }

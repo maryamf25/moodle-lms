@@ -3,10 +3,12 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getUserCourses, getUserProfile, EnrolledCourse, UserProfile } from '@/lib/moodle/index';
 import { getUserId } from '@/app/(auth)/login/actions';
+import { normalizeRole } from '@/lib/auth/roles';
 
 export default async function Dashboard() {
     const cookieStore = await cookies();
     const token = cookieStore.get('moodle_token')?.value;
+    const roleFromCookie = normalizeRole(cookieStore.get('moodle_role')?.value);
 
     if (!token) {
         redirect('/login');
@@ -33,6 +35,8 @@ export default async function Dashboard() {
             // redirect('/login'); // Optional: force re-login
         }
     }
+
+    const userRole = userProfile?.role ?? roleFromCookie;
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -78,6 +82,7 @@ export default async function Dashboard() {
                                 'use server';
                                 const { cookies } = await import('next/headers');
                                 (await cookies()).delete('moodle_token');
+                                (await cookies()).delete('moodle_role');
                                 redirect('/login');
                             }}>
                                 <button type="submit" className="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">
@@ -95,7 +100,7 @@ export default async function Dashboard() {
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">
-                                {userProfile?.username === 'admin' ? 'Admin Dashboard' : 'My Learning'}
+                                {userRole === 'admin' ? 'Admin Dashboard' : userRole === 'teacher' ? 'Teacher Dashboard' : 'My Learning'}
                             </h1>
                             {userProfile && (
                                 <div className="text-sm text-gray-500 mt-1">
@@ -104,14 +109,16 @@ export default async function Dashboard() {
                             )}
                         </div>
 
-                        {userProfile?.username === 'admin' && (
+                        {(userRole === 'admin' || userRole === 'teacher') && (
                             <div className="flex space-x-3">
                                 <a href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/course/management.php`} target="_blank" className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors">
                                     Manage Courses
                                 </a>
-                                <a href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/user.php`} target="_blank" className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors">
-                                    Manage Users
-                                </a>
+                                {userRole === 'admin' && (
+                                    <a href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/user.php`} target="_blank" className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors">
+                                        Manage Users
+                                    </a>
+                                )}
                             </div>
                         )}
                     </div>
@@ -129,7 +136,7 @@ export default async function Dashboard() {
                     )}
 
                     {/* Admin Stats Row (Demo) */}
-                    {userProfile?.username === 'admin' && (
+                    {userRole === 'admin' && (
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-10">
                             {[
                                 { name: 'Total Users', stat: '120+', icon: '👥', color: 'bg-blue-50 text-blue-700' },
@@ -153,7 +160,7 @@ export default async function Dashboard() {
                     )}
 
                     {/* Course Grid */}
-                    <h2 className="text-xl font-bold text-gray-900 mb-4">{userProfile?.username === 'admin' ? 'All Courses Overview' : 'Enrolled Courses'}</h2>
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">{userRole === 'admin' ? 'All Courses Overview' : userRole === 'teacher' ? 'Teaching Courses' : 'Enrolled Courses'}</h2>
 
                     {courses.length === 0 && !error ? (
                         <div className="text-center py-20 bg-white rounded-lg shadow-sm border border-gray-100">
@@ -195,7 +202,7 @@ export default async function Dashboard() {
                                             </div>
                                         )}
                                         {/* Admin specific: Show Hidden Badge */}
-                                        {userProfile?.username === 'admin' && course.visible === 0 && (
+                                        {userRole === 'admin' && course.visible === 0 && (
                                             <div className="absolute top-2 left-2 bg-gray-800 text-white text-xs font-bold px-2 py-1 rounded-full">
                                                 Hidden
                                             </div>
@@ -227,9 +234,9 @@ export default async function Dashboard() {
                                                     href={`/course/${course.id}/learn`}
                                                     className="flex-1 block w-full text-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
                                                 >
-                                                    {userProfile?.username === 'admin' ? 'Preview' : 'Continue'}
+                                                    {userRole === 'admin' ? 'Preview' : userRole === 'teacher' ? 'Open' : 'Continue'}
                                                 </Link>
-                                                {userProfile?.username === 'admin' && (
+                                                {(userRole === 'admin' || userRole === 'teacher') && (
                                                     <a
                                                         href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/course/view.php?id=${course.id}`}
                                                         target="_blank"

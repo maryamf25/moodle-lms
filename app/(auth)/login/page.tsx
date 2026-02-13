@@ -1,8 +1,6 @@
 'use client';
 import { useState, Suspense } from 'react';
-import { loginUser } from '@/lib/moodle/index';
-import { getAutoLoginUrlAction, getUserId } from './actions';
-import { setToken } from '@/utils/auth';
+import { loginWithCredentialsAction } from './actions';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function LoginPage() {
@@ -18,49 +16,25 @@ function LoginForm() {
     const [error, setError] = useState('');
     const router = useRouter();
     const searchParams = useSearchParams();
-    const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+    const callbackUrl = searchParams.get('callbackUrl');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
         try {
-            // Step 1: Login
-            const data = await loginUser(formData.username, formData.password);
-            if (!data.token) {
-                setError('Invalid credentials');
-                return;
-            }
-            setToken(data.token);
+            const result = await loginWithCredentialsAction(
+                formData.username,
+                formData.password,
+                callbackUrl
+            );
 
-            if (!data.privatetoken) {
-                // Fallback agar private token na mile
-                // window.location.href = `${process.env.NEXT_PUBLIC_MOODLE_URL}/my/`;
-                router.push(callbackUrl);
+            if (!result.success || !result.redirectPath) {
+                setError(result.error || 'Invalid credentials');
                 return;
             }
 
-            // Step 2: Get User ID
-            const userId = await getUserId(data.token);
-
-            // Step 3: Get Auto Login Key
-            // Step 3: Get Auto Login Key
-            const autoLoginData = await getAutoLoginUrlAction(data.token, data.privatetoken);
-            console.log("AutoLogin Data:", autoLoginData);
-            if (autoLoginData.key) {
-                // Manually construct URL to ensure userid is included
-                const moodleBaseUrl = process.env.NEXT_PUBLIC_MOODLE_URL;
-
-                // URL Structure: autologin.php?userid=...&key=...&urltogo=...
-                const finalAutoLoginUrl = `${moodleBaseUrl}/admin/tool/mobile/autologin.php?userid=${userId}&key=${autoLoginData.key}&urltogo=${moodleBaseUrl}/my/`;
-
-                console.log("Redirecting to:", finalAutoLoginUrl);
-                window.location.href = finalAutoLoginUrl;
-            } else {
-                // Fallback if no key returned
-                console.error("Auto-login key not found");
-                router.push(callbackUrl);
-            }
+            router.push(result.redirectPath);
 
         } catch (err) {
             setError('Login failed: ' + (err instanceof Error ? err.message : 'Unknown error'));

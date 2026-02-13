@@ -1,16 +1,17 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getDashboardPathForRole, normalizeRole, roleFromDashboardPath } from '@/lib/auth/roles';
 
 export function middleware(request: NextRequest) {
     const token = request.cookies.get('moodle_token')?.value;
+    const roleCookie = request.cookies.get('moodle_role')?.value;
+    const role = roleCookie ? normalizeRole(roleCookie) : null;
     const { pathname } = request.nextUrl;
 
     // Paths that require authentication
     // Paths that require authentication
     // We want /course/[id] to be public, but /course/[id]/learn to be protected
-    const protectedPaths = ['/dashboard', '/profile', '/learn']; // simplistic match for now, or regex
-
     // Better logic for course/learn
     const isProtected =
         pathname.startsWith('/dashboard') ||
@@ -27,8 +28,25 @@ export function middleware(request: NextRequest) {
         return NextResponse.redirect(loginUrl);
     }
 
+    if (token) {
+        if (pathname === '/dashboard' && role) {
+            return NextResponse.redirect(new URL(getDashboardPathForRole(role), request.url));
+        }
+
+        const requiredRoleForPath = roleFromDashboardPath(pathname);
+        if (requiredRoleForPath && !role) {
+            return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+        if (requiredRoleForPath && role && requiredRoleForPath !== role) {
+            return NextResponse.redirect(new URL(getDashboardPathForRole(role), request.url));
+        }
+    }
+
     if (isAuthPath && token) {
-        return NextResponse.redirect(new URL('/dashboard', request.url));
+        if (!role) {
+            return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+        return NextResponse.redirect(new URL(getDashboardPathForRole(role), request.url));
     }
 
     return NextResponse.next();

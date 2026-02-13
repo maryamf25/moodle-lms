@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getCoursePriceInfo } from '@/lib/moodle/courses'; // Import your new helper
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
+import { getUserSessionContext } from '@/lib/moodle/user';
 interface EnrollmentState {
     success?: boolean;
     error?: string;
@@ -86,6 +87,7 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
 
         const loginRes = await loginUser(username, password);
         if (loginRes.error) throw new Error(loginRes.error);
+        const session = await getUserSessionContext(loginRes.token);
 
   const courseInfo = await getCoursePriceInfo(courseId);
         const isPaidCourse = courseInfo && courseInfo.price > 0;
@@ -103,6 +105,10 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
             httpOnly: true,
             path: '/'
         });
+        cookieStore.set('moodle_role', session.role, {
+            secure: process.env.NODE_ENV === 'production',
+            path: '/'
+        });
 
         // 2. CALL REDIRECT HERE
         redirect(checkoutUrl); 
@@ -117,6 +123,10 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
         cookieStore.set('moodle_token', loginRes.token, {
             secure: process.env.NODE_ENV === 'production',
             httpOnly: true,
+            path: '/'
+        });
+        cookieStore.set('moodle_role', session.role, {
+            secure: process.env.NODE_ENV === 'production',
             path: '/'
         });
 

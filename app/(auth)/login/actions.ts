@@ -2,22 +2,15 @@
 
 'use server';
 
+import { getDashboardPathForRole } from '@/lib/auth/roles';
+import { getUserSessionContext } from '@/lib/moodle/user';
+import { loginUser } from '@/lib/moodle/auth';
+import { cookies } from 'next/headers';
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 export async function getUserId(token: string) {
-    const endpoint = `${process.env.NEXT_PUBLIC_MOODLE_URL}/webservice/rest/server.php`;
-
-    const params = new URLSearchParams({
-        wstoken: token,
-        wsfunction: 'core_webservice_get_site_info',
-        moodlewsrestformat: 'json'
-    });
-
-    const res = await fetch(`${endpoint}?${params.toString()}`);
-    const data = await res.json();
-
-    if (!data.userid) throw new Error('Unable to fetch user ID');
-    return data.userid;
+    const session = await getUserSessionContext(token);
+    return session.userid;
 }
 
 export async function getAutoLoginUrlAction(token: string, privateToken: string) {
@@ -54,4 +47,54 @@ export async function getAutoLoginUrlAction(token: string, privateToken: string)
     } catch (error: any) {
         return { error: error.message || 'Network error' };
     }
+}
+
+export async function getUserSessionAction(token: string) {
+    const session = await getUserSessionContext(token);
+    return {
+        userId: session.userid,
+        role: session.role,
+        dashboardPath: getDashboardPathForRole(session.role),
+    };
+}
+
+interface LoginActionResult {
+    success: boolean;
+    redirectPath?: string;
+    error?: string;
+}
+
+export async function loginWithCredentialsAction(
+    username: string,
+    password: string,
+    callbackUrl?: string | null
+): Promise<LoginActionResult> {
+    const loginResult = await loginUser(username, password);
+
+    if (!loginResult.token) {
+        return { success: false, error: loginResult.error || 'Invalid credentials' };
+    }
+
+    const session = await getUserSessionContext(loginResult.token);
+    const dashboardPath = getDashboardPathForRole(session.role);
+    const safeCallbackUrl =
+        callbackUrl && callbackUrl.startsWith('/') && !callbackUrl.startsWith('//')
+            ? callbackUrl
+            : null;
+
+    const cookieStore = await cookies();
+    cookieStore.set('moodle_token', loginResult.token, {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        path: '/',
+    });
+    cookieStore.set('moodle_role', session.role, {
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+    });
+
+    return {
+        success: true,
+        redirectPath: safeCallbackUrl || dashboardPath,
+    };
 }
