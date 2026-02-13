@@ -148,7 +148,16 @@ async function generateSafepayLink(courseId: number, amount: number, userId: str
                 mode: "payment",
                 intent: "CYBERSOURCE",
                 redirect_url: `${process.env.NEXT_PUBLIC_URL}/payment-success`,
-                cancel_url: `${process.env.NEXT_PUBLIC_URL}/course/${courseId}`
+                cancel_url: `${process.env.NEXT_PUBLIC_URL}/course/${courseId}`,
+                // ADD THESE FOR BETTER REDIRECT HANDLING:
+// ADD THIS:
+    metadata: {
+        order_id: `${courseId}-${userId}`
+    },
+    configuration: {
+        success_url: `${process.env.NEXT_PUBLIC_URL}/payment-success`,
+        auto_redirect: true // Some API versions support this flag
+    }
             })
         });
 

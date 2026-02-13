@@ -4,33 +4,35 @@ import { EnrolledCourse, CourseContent } from './types';
 // --- Enroll User Function ---
 export async function enrolUser(userId: number, courseId: number) {
     try {
-        const params = new URLSearchParams({
+        const url = `${BASE_URL}/webservice/rest/server.php`;
+        
+        const bodyParams = new URLSearchParams({
             wstoken: process.env.MOODLE_ADMIN_TOKEN!,
             wsfunction: 'enrol_manual_enrol_users',
             moodlewsrestformat: 'json',
+            'enrolments[0][roleid]': '5',
+            'enrolments[0][userid]': userId.toString(),
+            'enrolments[0][courseid]': courseId.toString(),
         });
 
-        const bodyParams = new URLSearchParams();
-        bodyParams.append('enrolments[0][roleid]', '5'); // 5 = Student
-        bodyParams.append('enrolments[0][userid]', userId.toString());
-        bodyParams.append('enrolments[0][courseid]', courseId.toString());
-
-        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`, {
+        const response = await fetch(url, {
             method: 'POST',
-            body: bodyParams,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: bodyParams.toString(),
         });
 
-        // Moodle returns null usually on success for void functions, or exception
-        const text = await response.text();
-        // Try parse json
-        try {
-            const data = JSON.parse(text);
-            if (data && data.exception) return { error: data.message };
-            return { success: true };
-        } catch {
-            // if empty or not json, assume success if status ok?
-            return { success: true };
+        const data = await response.json();
+
+        // Moodle returns null/empty array on success, but an object on error
+        if (data && data.exception) {
+            console.error("❌ MOODLE ENROLLMENT EXCEPTION:", data.message);
+            return { error: data.message };
         }
+
+        console.log(`✨ Successfully enrolled User ${userId} in Course ${courseId}`);
+        return { success: true };
     } catch (error) {
         console.error('Enrollment error:', error);
         throw error;

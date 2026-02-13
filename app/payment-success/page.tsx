@@ -1,21 +1,23 @@
+// app/payment-success/page.tsx
 import { redirect } from 'next/navigation';
 
-export default async function PaymentSuccessPage({
-    searchParams,
+export default async function PaymentSuccess({
+  searchParams,
 }: {
-    searchParams: { order_id?: string };
+  searchParams: { order_id?: string; tracker?: string };
 }) {
-    // Safepay appends the order_id to the redirect URL
-    const params = await searchParams;
-    const orderId = params.order_id;
+  const { order_id } = await searchParams;
 
-    if (!orderId) {
-        // Fallback if something went wrong
-        redirect('/');
-    }
+  console.log("💰 User returned from Safepay. Order ID:", order_id);
 
-    const [courseId] = orderId.split('-');
+  if (!order_id) {
+    redirect('/'); // Fallback to home if no ID found
+  }
 
-    // This is the "Specific Course" redirect you wanted
-    redirect(`/course/${courseId}/learn`);
+  // Extract courseId from "2-4" (courseId-userId)
+  const courseId = order_id.split('-')[0];
+
+  // Since your Webhook already enrolled the user, 
+  // we just need to send the browser to the course page.
+  redirect(`/course/${courseId}/learn`);
 }
