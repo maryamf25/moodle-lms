@@ -12,6 +12,22 @@ interface MoodleSignupSuccessResponse {
     warnings?: Array<{ item?: string; itemid?: number; warningcode?: string; message?: string }>;
 }
 
+interface MoodleCreateCourseResponseRow {
+    id?: number;
+    shortname?: string;
+    fullname?: string;
+}
+
+interface MoodleCreateSectionResponseRow {
+    id?: number;
+    section?: number;
+    name?: string;
+}
+
+interface MoodleCourseCategoryRow {
+    id?: number;
+}
+
 export interface RegisterUserResult {
     id: number;
     username: string;
@@ -29,6 +45,35 @@ export interface RegisterUserErrorDetails {
     rawResponse?: string;
 }
 
+export interface CreateTeacherCourseInput {
+    teacherId: number;
+    fullname: string;
+    shortname: string;
+    summary?: string;
+    categoryId?: number;
+    visible?: boolean;
+    teacherRoleId?: number;
+}
+
+export interface CreateTeacherCourseResult {
+    id: number;
+    fullname: string;
+    shortname: string;
+}
+
+export interface AddCourseContentInput {
+    courseId: number;
+    sectionName: string;
+    sectionSummary?: string;
+    sectionNumber?: number;
+}
+
+export interface AddCourseContentResult {
+    id?: number;
+    section?: number;
+    name: string;
+}
+
 export class RegisterUserError extends Error {
     details: RegisterUserErrorDetails;
 
@@ -37,6 +82,94 @@ export class RegisterUserError extends Error {
         this.name = 'RegisterUserError';
         this.details = details;
     }
+}
+
+function getAdminTokenOrThrow(): string {
+    const adminToken = process.env.MOODLE_ADMIN_TOKEN;
+    if (!adminToken) {
+        throw new Error('MOODLE_ADMIN_TOKEN is not configured');
+    }
+    return adminToken;
+}
+
+function getMoodleError(data: unknown): MoodleErrorResponse | null {
+    if (typeof data !== 'object' || data === null) {
+        return null;
+    }
+    const record = data as Record<string, unknown>;
+    const exception = typeof record.exception === 'string' ? record.exception : undefined;
+    const errorcode = typeof record.errorcode === 'string' ? record.errorcode : undefined;
+    const message = typeof record.message === 'string' ? record.message : undefined;
+    if (!exception && !errorcode && !message) {
+        return null;
+    }
+    return { exception, errorcode, message };
+}
+
+async function callAdminWebservice(wsfunction: string, params: URLSearchParams): Promise<unknown> {
+    if (!BASE_URL) {
+        throw new Error('NEXT_PUBLIC_MOODLE_URL is not configured');
+    }
+
+    const body = new URLSearchParams({
+        wstoken: getAdminTokenOrThrow(),
+        wsfunction,
+        moodlewsrestformat: 'json',
+    });
+
+    params.forEach((value, key) => {
+        body.append(key, value);
+    });
+
+    const response = await fetch(`${BASE_URL}/webservice/rest/server.php`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Moodle request failed (${wsfunction}) with status ${response.status}`);
+    }
+
+    const data: unknown = await response.json();
+    const moodleError = getMoodleError(data);
+    if (moodleError?.exception || moodleError?.errorcode) {
+        throw new Error(moodleError.message || `Moodle API error in ${wsfunction}`);
+    }
+
+    return data;
+}
+
+async function resolveCourseCategoryId(preferredCategoryId?: number): Promise<number> {
+    const hasPreferred = Number.isInteger(preferredCategoryId) && (preferredCategoryId as number) > 0;
+    if (hasPreferred) {
+        const preferredParams = new URLSearchParams({
+            'criteria[0][key]': 'id',
+            'criteria[0][value]': String(preferredCategoryId),
+        });
+        const preferredData = await callAdminWebservice('core_course_get_categories', preferredParams);
+        if (Array.isArray(preferredData) && preferredData.some((row) => (row as MoodleCourseCategoryRow).id === preferredCategoryId)) {
+            return preferredCategoryId as number;
+        }
+    }
+
+    const allData = await callAdminWebservice('core_course_get_categories', new URLSearchParams());
+    if (!Array.isArray(allData)) {
+        throw new Error('Could not resolve a valid Moodle course category');
+    }
+
+    const categoryIds = allData
+        .map((row) => (row as MoodleCourseCategoryRow).id)
+        .filter((id): id is number => typeof id === 'number' && id > 0)
+        .sort((a, b) => a - b);
+
+    if (categoryIds.length === 0) {
+        throw new Error('No valid Moodle category found. Please create a category in Moodle first.');
+    }
+
+    return categoryIds[0];
 }
 
 // --- 1. LOGIN FUNCTION ---
@@ -197,5 +330,111 @@ async function registerViaAuthEmailSignupUser(userData: UserData, token: string)
         username: userData.username,
         requiresEmailConfirmation: true,
         nextStepMessage: 'Registration submitted. Please check your email and confirm your account.',
+    };
+}
+
+export async function createTeacherCourse(input: CreateTeacherCourseInput): Promise<CreateTeacherCourseResult> {
+    const fullname = input.fullname.trim();
+    const shortname = input.shortname.trim();
+
+    if (!fullname || !shortname) {
+        throw new Error('Course fullname and shortname are required');
+    }
+    if (!Number.isInteger(input.teacherId) || input.teacherId <= 0) {
+        throw new Error('A valid teacherId is required');
+    }
+
+    const preferredCategoryId =
+        Number.isInteger(input.categoryId) && (input.categoryId as number) > 0 ? input.categoryId : undefined;
+    let categoryId = await resolveCourseCategoryId(preferredCategoryId);
+
+    const buildCreateParams = (resolvedCategoryId: number) => {
+        const params = new URLSearchParams({
+            'courses[0][fullname]': fullname,
+            'courses[0][shortname]': shortname,
+            'courses[0][categoryid]': String(resolvedCategoryId),
+            'courses[0][visible]': input.visible === false ? '0' : '1',
+        });
+
+        if (input.summary?.trim()) {
+            params.append('courses[0][summary]', input.summary.trim());
+            params.append('courses[0][summaryformat]', '1');
+        }
+        return params;
+    };
+
+    let createdData: unknown;
+    try {
+        createdData = await callAdminWebservice('core_course_create_courses', buildCreateParams(categoryId));
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to create course';
+        const hasContextError = message.includes('Context does not exist') || message.includes('category context');
+        if (!hasContextError) {
+            throw error;
+        }
+
+        const fallbackCategoryId = await resolveCourseCategoryId(undefined);
+        if (fallbackCategoryId === categoryId) {
+            throw new Error(`Failed to create course in category ${categoryId}: ${message}`);
+        }
+        categoryId = fallbackCategoryId;
+        createdData = await callAdminWebservice('core_course_create_courses', buildCreateParams(categoryId));
+    }
+
+    if (!Array.isArray(createdData) || createdData.length === 0) {
+        throw new Error('Moodle did not return created course data');
+    }
+
+    const courseRow = createdData[0] as MoodleCreateCourseResponseRow;
+    if (!courseRow.id) {
+        throw new Error('Moodle returned an invalid course id');
+    }
+
+    const enrollParams = new URLSearchParams({
+        'enrolments[0][roleid]': String(input.teacherRoleId ?? 3),
+        'enrolments[0][userid]': String(input.teacherId),
+        'enrolments[0][courseid]': String(courseRow.id),
+    });
+    await callAdminWebservice('enrol_manual_enrol_users', enrollParams);
+
+    return {
+        id: courseRow.id,
+        fullname: courseRow.fullname || fullname,
+        shortname: courseRow.shortname || shortname,
+    };
+}
+
+export async function addCourseContent(input: AddCourseContentInput): Promise<AddCourseContentResult> {
+    const sectionName = input.sectionName.trim();
+    if (!sectionName) {
+        throw new Error('Section title is required');
+    }
+    if (!Number.isInteger(input.courseId) || input.courseId <= 0) {
+        throw new Error('A valid courseId is required');
+    }
+
+    const sectionParams = new URLSearchParams({
+        courseid: String(input.courseId),
+        'sections[0][name]': sectionName,
+    });
+
+    if (input.sectionSummary?.trim()) {
+        sectionParams.append('sections[0][summary]', input.sectionSummary.trim());
+        sectionParams.append('sections[0][summaryformat]', '1');
+    }
+
+    if (input.sectionNumber !== undefined && Number.isInteger(input.sectionNumber) && input.sectionNumber >= 0) {
+        sectionParams.append('sections[0][section]', String(input.sectionNumber));
+    }
+
+    const createdData = await callAdminWebservice('core_course_create_sections', sectionParams);
+    const firstRow = Array.isArray(createdData) && createdData.length > 0
+        ? (createdData[0] as MoodleCreateSectionResponseRow)
+        : null;
+
+    return {
+        id: firstRow?.id,
+        section: firstRow?.section,
+        name: firstRow?.name || sectionName,
     };
 }
