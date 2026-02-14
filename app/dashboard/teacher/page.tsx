@@ -75,15 +75,15 @@ export default async function TeacherDashboardPage({ searchParams }: TeacherDash
                             (await cookies()).delete('moodle_role');
                             redirect('/login');
                         }}>
-                            <button type="submit" className="text-sm text-gray-600 hover:text-gray-900">Sign out</button>
+                            <button type="submit" className="text-sm text-black hover:text-black">Sign out</button>
                         </form>
                     </div>
                 </div>
             </nav>
 
-            <main className="max-w-7xl mx-auto px-4 py-8">
-                <h1 className="text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
-                <p className="text-gray-600 mt-1">
+            <main className="max-w-7xl mx-auto px-4 py-8 text-black">
+                <h1 className="text-3xl font-bold text-black">Teacher Dashboard</h1>
+                <p className="text-black mt-1">
                     {userProfile ? `Welcome, ${userProfile.firstname || userProfile.fullname}.` : 'Manage your teaching space.'}
                 </p>
 
@@ -106,21 +106,21 @@ export default async function TeacherDashboardPage({ searchParams }: TeacherDash
 
                 <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="bg-white border rounded-lg p-5">
-                        <p className="text-sm text-gray-500">Teaching Courses</p>
-                        <p className="text-3xl font-bold text-gray-900 mt-2">{courses.length}</p>
+                        <p className="text-sm text-black">Teaching Courses</p>
+                        <p className="text-3xl font-bold text-black mt-2">{courses.length}</p>
                     </div>
                     <div className="bg-white border rounded-lg p-5">
-                        <p className="text-sm text-gray-500">Hidden Courses</p>
-                        <p className="text-3xl font-bold text-gray-900 mt-2">{hiddenCourses}</p>
+                        <p className="text-sm text-black">Hidden Courses</p>
+                        <p className="text-3xl font-bold text-black mt-2">{hiddenCourses}</p>
                     </div>
                     <div className="bg-white border rounded-lg p-5">
-                        <p className="text-sm text-gray-500">Avg Learner Progress</p>
-                        <p className="text-3xl font-bold text-gray-900 mt-2">{avgProgress}%</p>
+                        <p className="text-sm text-black">Avg Learner Progress</p>
+                        <p className="text-3xl font-bold text-black mt-2">{avgProgress}%</p>
                     </div>
                 </div>
 
                 <div className="mt-8 bg-white border rounded-lg p-5">
-                    <h2 className="text-lg font-semibold text-gray-900">Instructor Actions</h2>
+                    <h2 className="text-lg font-semibold text-black">Instructor Actions</h2>
                     <div className="mt-3 flex flex-wrap gap-3">
                         <a
                             href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/grade/report/grader/index.php`}
@@ -133,33 +133,33 @@ export default async function TeacherDashboardPage({ searchParams }: TeacherDash
                     </div>
                     <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <form action={createTeacherCourseAction} className="border rounded-lg p-4 space-y-3">
-                            <h3 className="font-semibold text-gray-900">Create Course</h3>
+                            <h3 className="font-semibold text-black">Create Course</h3>
                             <input
                                 type="text"
                                 name="fullname"
                                 required
                                 placeholder="Course full name"
-                                className="w-full border rounded-md px-3 py-2 text-sm"
+                                className="w-full border rounded-md px-3 py-2 text-sm text-black placeholder:text-black"
                             />
                             <input
                                 type="text"
                                 name="shortname"
                                 required
                                 placeholder="Course short name (e.g. WEB101)"
-                                className="w-full border rounded-md px-3 py-2 text-sm"
+                                className="w-full border rounded-md px-3 py-2 text-sm text-black placeholder:text-black"
                             />
                             <textarea
                                 name="summary"
                                 placeholder="Course summary (optional)"
                                 rows={3}
-                                className="w-full border rounded-md px-3 py-2 text-sm"
+                                className="w-full border rounded-md px-3 py-2 text-sm text-black placeholder:text-black"
                             />
                             <input
                                 type="number"
                                 name="categoryId"
                                 min={1}
                                 placeholder="Category ID (optional)"
-                                className="w-full border rounded-md px-3 py-2 text-sm"
+                                className="w-full border rounded-md px-3 py-2 text-sm text-black placeholder:text-black"
                             />
                             <button
                                 type="submit"
@@ -170,11 +170,11 @@ export default async function TeacherDashboardPage({ searchParams }: TeacherDash
                         </form>
 
                         <form action={addCourseContentAction} className="border rounded-lg p-4 space-y-3">
-                            <h3 className="font-semibold text-gray-900">Add Course Content</h3>
+                            <h3 className="font-semibold text-black">Add Course Content</h3>
                             <select
                                 name="courseId"
                                 required
-                                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                                className="w-full border rounded-md px-3 py-2 text-sm bg-white text-black"
                                 defaultValue=""
                             >
                                 <option value="" disabled>Select a course</option>
@@ -189,20 +189,20 @@ export default async function TeacherDashboardPage({ searchParams }: TeacherDash
                                 name="sectionName"
                                 required
                                 placeholder="Section title"
-                                className="w-full border rounded-md px-3 py-2 text-sm"
+                                className="w-full border rounded-md px-3 py-2 text-sm text-black placeholder:text-black"
                             />
                             <textarea
                                 name="sectionSummary"
                                 placeholder="Section content/summary (optional)"
                                 rows={3}
-                                className="w-full border rounded-md px-3 py-2 text-sm"
+                                className="w-full border rounded-md px-3 py-2 text-sm text-black placeholder:text-black"
                             />
                             <input
                                 type="number"
                                 name="sectionNumber"
                                 min={0}
                                 placeholder="Section number (optional)"
-                                className="w-full border rounded-md px-3 py-2 text-sm"
+                                className="w-full border rounded-md px-3 py-2 text-sm text-black placeholder:text-black"
                             />
                             <button
                                 type="submit"
@@ -215,18 +215,18 @@ export default async function TeacherDashboardPage({ searchParams }: TeacherDash
                     </div>
                 </div>
 
-                <h2 className="text-xl font-semibold text-gray-900 mt-8">Course Workspace</h2>
+                <h2 className="text-xl font-semibold text-black mt-8">Course Workspace</h2>
                 <div className="mt-4 space-y-3">
                     {courses.length === 0 ? (
-                        <div className="bg-white border rounded-lg p-8 text-center text-gray-500">
+                        <div className="bg-white border rounded-lg p-8 text-center text-black">
                             No teaching courses found for this account.
                         </div>
                     ) : (
                         courses.map((course) => (
                             <div key={course.id} className="bg-white border rounded-lg p-4 flex items-center justify-between gap-4">
                                 <div>
-                                    <h3 className="font-semibold text-gray-900">{course.fullname}</h3>
-                                    <p className="text-sm text-gray-500 mt-1">
+                                    <h3 className="font-semibold text-black">{course.fullname}</h3>
+                                    <p className="text-sm text-black mt-1">
                                         Visibility: {course.visible === 0 ? 'Hidden' : 'Visible'}
                                     </p>
                                 </div>
