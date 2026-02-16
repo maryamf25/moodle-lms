@@ -2,6 +2,7 @@
 import { useState, Suspense } from 'react';
 import { loginWithCredentialsAction } from './actions';
 import { useRouter, useSearchParams } from 'next/navigation';
+import MoodleBackgroundLogin from '@/components/MoodleBackgroundLogin';
 
 export default function LoginPage() {
     return (
@@ -17,6 +18,8 @@ function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const callbackUrl = searchParams.get('callbackUrl');
+
+    const [loginResult, setLoginResult] = useState<{ token: string, privateToken: string } | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -34,12 +37,17 @@ function LoginForm() {
                 return;
             }
 
-            console.log('[auth][client] login result', {
-                username: formData.username,
-                resolvedRole: result.role,
-                redirectPath: result.redirectPath,
-            });
-            router.push(result.redirectPath);
+            console.log('[auth][client] login result success');
+
+            // Set result to trigger MoodleBackgroundLogin
+            if (result.token && result.privateToken) {
+                setLoginResult({ token: result.token, privateToken: result.privateToken });
+            }
+
+            // Small delay to let the iframe trigger, then redirect
+            setTimeout(() => {
+                router.push(result.redirectPath!);
+            }, 1000);
 
         } catch (err) {
             setError('Login failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -48,6 +56,12 @@ function LoginForm() {
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-gray-100">
+            {loginResult && (
+                <MoodleBackgroundLogin
+                    token={loginResult.token}
+                    privateToken={loginResult.privateToken}
+                />
+            )}
             <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-md w-96">
                 <h1 className="text-2xl font-bold mb-6 text-center text-blue-600">LMS Login</h1>
 

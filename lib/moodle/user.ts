@@ -334,3 +334,25 @@ export async function getUserSessionContext(token: string): Promise<{ userid: nu
         role,
     };
 }
+export async function getFullUserProfile(token: string, userid: number) {
+    try {
+        const params = new URLSearchParams({
+            wstoken: token,
+            wsfunction: 'core_user_get_users_by_field',
+            moodlewsrestformat: 'json',
+            'field': 'id',
+            'values[0]': userid.toString()
+        });
+
+        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+        const data = await response.json();
+
+        if (Array.isArray(data) && data.length > 0) {
+            return data[0];
+        }
+        return null;
+    } catch (error) {
+        console.error('Get full profile error:', error);
+        return null;
+    }
+}

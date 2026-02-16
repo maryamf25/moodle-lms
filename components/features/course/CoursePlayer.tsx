@@ -2,15 +2,63 @@
 
 import { useState } from 'react';
 import { CourseContent, Module } from '@/lib/moodle/index';
+import { getAutoLoginUrlAction } from '@/app/(auth)/login/actions';
 
 interface CoursePlayerProps {
     courseId: number;
     courseName?: string;
     sections: CourseContent[];
+    token: string;
+    privateToken: string;
 }
 
-export default function CoursePlayer({ courseId, courseName, sections }: CoursePlayerProps) {
+export default function CoursePlayer({
+    courseId,
+    courseName,
+    sections,
+    token,
+    privateToken
+}: CoursePlayerProps) {
     const [selectedModule, setSelectedModule] = useState<Module | null>(null);
+    const [isLaunching, setIsLaunching] = useState(false);
+
+    const handleLaunchActivity = async (module: Module) => {
+        // Moodle content usually has a .url or we can construct it from the module id
+        const targetUrl = module.url || `${process.env.NEXT_PUBLIC_MOODLE_URL}/mod/${module.modname}/view.php?id=${module.id}`;
+
+        console.log("[Launch] Target URL:", targetUrl);
+
+        // Open window immediately to prevent popup blocker
+        const newWindow = window.open('about:blank', '_blank');
+        if (!newWindow) {
+            alert("Please allow popups for this site to launch activities.");
+            return;
+        }
+
+        if (!privateToken) {
+            newWindow.location.href = targetUrl;
+            return;
+        }
+
+        setIsLaunching(true);
+        try {
+            const result = await getAutoLoginUrlAction(token || '', privateToken);
+            // console.log("[Launch] Auth result:", result);
+
+            if (result && result.url) {
+                // Ensure correct parameter joining (should use & if it's already a full URL)
+                const finalUrl = `${result.url}&urltogo=${encodeURIComponent(targetUrl)}`;
+                newWindow.location.href = finalUrl;
+            } else {
+                newWindow.location.href = targetUrl;
+            }
+        } catch (e) {
+            console.error("Launch Error:", e);
+            newWindow.location.href = targetUrl;
+        } finally {
+            setIsLaunching(false);
+        }
+    };
 
     return (
         <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-white">
@@ -79,14 +127,23 @@ export default function CoursePlayer({ courseId, courseName, sections }: CourseP
                             </p>
                         </div>
 
-                        <a
-                            href={selectedModule.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform hover:scale-105"
+                        <button
+                            onClick={() => handleLaunchActivity(selectedModule)}
+                            disabled={isLaunching}
+                            className={`inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-sm text-white ${isLaunching ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform ${!isLaunching && 'hover:scale-105'}`}
                         >
-                            Launch Activity &rarr;
-                        </a>
+                            {isLaunching ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Authenticating...
+                                </>
+                            ) : (
+                                <>Launch Activity &rarr;</>
+                            )}
+                        </button>
                     </div>
                 ) : (
                     <div className="text-center p-12">

@@ -46,9 +46,13 @@ export async function getAutoLoginUrlAction(token: string, privateToken: string)
 
         const data = await res.json();
 
-        // 2. Hum ab 'key' bhi return kar rahe hain taake URL manually bana saken
+        // 2. UserId fetch karein taake URL sahi bane
+        const session = await getUserSessionContext(token);
+        const userid = session.userid;
+
         if (data.key) {
-            return { key: data.key, url: data.autologinurl };
+            const autologinUrl = `${process.env.NEXT_PUBLIC_MOODLE_URL}/admin/tool/mobile/autologin.php?userid=${userid}&key=${data.key}`;
+            return { key: data.key, url: autologinUrl };
         }
 
         if (data.exception) return { error: `Moodle Error: ${data.message}` };
@@ -72,6 +76,8 @@ interface LoginActionResult {
     success: boolean;
     redirectPath?: string;
     role?: string;
+    token?: string;
+    privateToken?: string;
     error?: string;
 }
 
@@ -112,6 +118,13 @@ export async function loginWithCredentialsAction(
         secure: process.env.NODE_ENV === 'production',
         path: '/',
     });
+    if (loginResult.privatetoken) {
+        cookieStore.set('moodle_private_token', loginResult.privatetoken, {
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
+            path: '/',
+        });
+    }
     console.log('[auth][login] resolved role for user', {
         username: session.username,
         userid: session.userid,
@@ -131,5 +144,7 @@ export async function loginWithCredentialsAction(
         success: true,
         redirectPath: safeCallbackUrl || dashboardPath,
         role: session.role,
+        token: loginResult.token,
+        privateToken: loginResult.privatetoken,
     };
 }

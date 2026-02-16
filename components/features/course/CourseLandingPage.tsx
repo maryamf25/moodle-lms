@@ -18,9 +18,10 @@ interface CourseLandingPageProps {
     isEnrolled: boolean;
     price: number;
     isLoggedIn: boolean; // Added isLoggedIn
+    instructors: any[];
 }
 
-export default function CourseLandingPage({ course, sections, isEnrolled, price, isLoggedIn }: CourseLandingPageProps) {
+export default function CourseLandingPage({ course, sections, isEnrolled, price, isLoggedIn, instructors }: CourseLandingPageProps) {
     const isPaid = price > 0;
 
     return (
@@ -43,15 +44,37 @@ export default function CourseLandingPage({ course, sections, isEnrolled, price,
                         <Curriculum sections={sections} isEnrolled={isEnrolled} courseId={course.id} />
 
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-                            <h2 className="text-2xl font-bold mb-6 text-gray-900">Your Instructor</h2>
-                            <div className="flex items-center">
-                                <div className="w-16 h-16 rounded-full bg-gray-200 flex-shrink-0 mr-4 overflow-hidden">
-                                    <img src={`https://ui-avatars.com/api/?name=Admin+User&background=random`} alt="Instructor" className="w-full h-full object-cover" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-lg text-gray-900">Course Instructor</h3>
-                                    <p className="text-gray-500 text-sm">Expert in the field</p>
-                                </div>
+                            <h2 className="text-2xl font-bold mb-6 text-gray-900">Course Instructors</h2>
+                            <div className="space-y-6">
+                                {instructors.length > 0 ? (
+                                    instructors.map((instructor) => (
+                                        <div key={instructor.id} className="flex items-center group">
+                                            <div className="w-16 h-16 rounded-full bg-indigo-100 flex-shrink-0 mr-4 overflow-hidden border-2 border-white shadow-sm ring-1 ring-slate-100">
+                                                <img
+                                                    src={instructor.profileimageurl || `https://ui-avatars.com/api/?name=${encodeURIComponent(instructor.fullname)}&background=random`}
+                                                    alt={instructor.fullname}
+                                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                                                />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-lg text-gray-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{instructor.fullname}</h3>
+                                                <p className="text-gray-500 text-sm font-medium">
+                                                    {instructor.roles?.map((r: any) => r.shortname).join(', ') || 'Instructor'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="flex items-center">
+                                        <div className="w-16 h-16 rounded-full bg-gray-100 flex-shrink-0 mr-4 overflow-hidden">
+                                            <img src={`https://ui-avatars.com/api/?name=Admin+User&background=random`} alt="Instructor" className="w-full h-full object-cover" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-lg text-gray-900">EduMeUp Instructor</h3>
+                                            <p className="text-gray-500 text-sm">Expert Professional</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

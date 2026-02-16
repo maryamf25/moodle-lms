@@ -1,5 +1,5 @@
-
 import Link from "next/link";
+import { getCategories } from "@/lib/moodle";
 
 export const dynamic = 'force-dynamic';
 
@@ -73,37 +73,24 @@ const formatDate = (timestamp: number) => {
 
 export default async function Home() {
   const courses = await getCourses();
-  const token = process.env.MOODLE_TOKEN;
+  const token = process.env.MOODLE_TOKEN || '';
+  const categories = await getCategories(token);
+
+  // Group courses by category
+  const coursesByCategory = courses.reduce((acc: Record<string, Course[]>, course) => {
+    if (course.format === 'site') return acc;
+    const cat = categories.find((c: any) => c.id === (course as any).categoryid);
+    const catName = cat ? cat.name : 'Other Courses';
+    if (!acc[catName]) acc[catName] = [];
+    acc[catName].push(course);
+    return acc;
+  }, {});
 
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900">
-      {/* Navbar */}
-      <nav className="border-b border-gray-100 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex-shrink-0 flex items-center">
-              <span className="text-2xl font-extrabold text-blue-600 tracking-tight">EduMeUp<span className="text-gray-900">Clone</span></span>
-            </div>
-            <div className="hidden md:flex space-x-8">
-              <a href="#" className="text-gray-500 hover:text-blue-600 font-medium">Home</a>
-              <a href="#courses" className="text-gray-500 hover:text-blue-600 font-medium">Courses</a>
-              <a href="#" className="text-gray-500 hover:text-blue-600 font-medium">Mentors</a>
-              <a href="#" className="text-gray-500 hover:text-blue-600 font-medium">Blog</a>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link href="/login" className="text-gray-600 hover:text-blue-600 font-medium px-3 py-2">
-                Login
-              </Link>
-              <Link href="/register" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-full shadow-lg shadow-blue-200 transition-all duration-200">
-                Sign Up
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
-
       {/* Hero Section */}
       <div className="bg-gradient-to-br from-blue-50 to-white pt-16 pb-24 lg:pt-32 overflow-hidden">
+        {/* ... (Hero content stays same) ... */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="lg:grid lg:grid-cols-2 lg:gap-8 items-center">
             <div className="mb-12 lg:mb-0">
@@ -130,7 +117,6 @@ export default async function Home() {
               </div>
             </div>
             <div className="relative">
-              {/* Abstract decoration */}
               <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-blue-100 rounded-full blur-3xl opacity-50 animate-pulse"></div>
               <div className="rounded-2xl shadow-2xl overflow-hidden border-4 border-white transform rotate-2 hover:rotate-0 transition-transform duration-500">
                 <img
@@ -175,89 +161,85 @@ export default async function Home() {
       {/* Courses Section */}
       <div id="courses" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div className="text-center mb-16">
-          <h2 className="text-base font-semibold text-blue-600 tracking-wide uppercase">Our Content</h2>
+          <h2 className="text-base font-semibold text-blue-600 tracking-wide uppercase">Our Catalog</h2>
           <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
-            Featured Courses
-          </p>
-          <p className="mt-4 max-w-2xl text-xl text-gray-500 mx-auto">
-            Browse our catalog of professional courses designed to help you master new skills.
+            Explore by Category
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-          {courses.length > 0 ? (
-            courses.map((course) => (
-              course.format !== 'site' && (
-                <div
-                  key={course.id}
-                  className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col border border-gray-100 group"
-                >
-                  {/* --- Course Image --- */}
-                  <div className="h-56 bg-gray-200 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors z-10"></div>
-                    {course.overviewfiles && course.overviewfiles.length > 0 ? (
-                      <img
-                        src={`${course.overviewfiles[0].fileurl}?token=${token}`}
-                        alt={course.fullname}
-                        className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-blue-50">
-                        <span className="text-blue-300 text-6xl font-bold opacity-50">
-                          {course.shortname.toUpperCase().substring(0, 2)}
-                        </span>
-                      </div>
-                    )}
-                    <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-blue-600 shadow-sm">
-                      {course.shortname}
-                    </div>
-                  </div>
+        <div className="space-y-20">
+          {Object.keys(coursesByCategory).length > 0 ? (
+            Object.entries(coursesByCategory).map(([categoryName, categoryCourses]) => (
+              <div key={categoryName} className="scroll-mt-20">
+                <div className="flex items-center gap-4 mb-8">
+                  <h3 className="text-2xl font-bold text-gray-900">{categoryName}</h3>
+                  <div className="flex-1 h-px bg-gray-100"></div>
+                  <span className="text-sm font-medium text-gray-400 bg-gray-50 px-3 py-1 rounded-full">
+                    {categoryCourses.length} {categoryCourses.length === 1 ? 'Course' : 'Courses'}
+                  </span>
+                </div>
 
-                  {/* --- Course Body --- */}
-                  <div className="p-8 flex-1 flex flex-col">
-                    <div className="mb-4">
-                      <h2 className="text-2xl font-bold text-gray-900 mb-2 leading-tight group-hover:text-blue-600 transition-colors">
-                        {course.fullname}
-                      </h2>
-
-                      {/* Dates */}
-                      <div className="flex items-center text-xs text-gray-500 space-x-4 mb-4 border-b border-gray-100 pb-4">
-                        <div className="flex items-center">
-                          <svg className="w-4 h-4 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span className="font-medium">{formatDate(course.startdate)}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                  {categoryCourses.map((course) => (
+                    <div
+                      key={course.id}
+                      className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col border border-gray-100 group"
+                    >
+                      {/* --- Course Image --- */}
+                      <div className="h-56 bg-gray-200 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors z-10"></div>
+                        {course.overviewfiles && course.overviewfiles.length > 0 ? (
+                          <img
+                            src={`${course.overviewfiles[0].fileurl}?token=${token}`}
+                            alt={course.fullname}
+                            className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-blue-50">
+                            <span className="text-blue-300 text-6xl font-bold opacity-50">
+                              {course.shortname.toUpperCase().substring(0, 2)}
+                            </span>
+                          </div>
+                        )}
+                        <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-blue-600 shadow-sm">
+                          {course.shortname}
                         </div>
                       </div>
 
-                      {/* Description */}
-                      <div
-                        className="text-gray-600 text-sm line-clamp-3 prose prose-sm"
-                        dangerouslySetInnerHTML={{ __html: course.summary }}
-                      />
+                      {/* --- Course Body --- */}
+                      <div className="p-8 flex-1 flex flex-col">
+                        <div className="mb-4">
+                          <h2 className="text-xl font-bold text-gray-900 mb-2 leading-tight group-hover:text-blue-600 transition-colors">
+                            {course.fullname}
+                          </h2>
+                          <div className="flex items-center text-xs text-gray-500 mb-4">
+                            <svg className="w-4 h-4 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span>{formatDate(course.startdate)}</span>
+                          </div>
+                          <div
+                            className="text-gray-600 text-sm line-clamp-2 prose prose-sm"
+                            dangerouslySetInnerHTML={{ __html: course.summary }}
+                          />
+                        </div>
+                        <div className="mt-auto pt-6">
+                          <Link
+                            href={`/course/${course.id}`}
+                            className="block w-full text-center bg-gray-50 border border-gray-200 text-gray-700 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 font-bold py-3 px-4 rounded-xl transition-all duration-200"
+                          >
+                            View Details
+                          </Link>
+                        </div>
+                      </div>
                     </div>
-
-                    {/* Enroll Button */}
-                    <div className="mt-auto pt-4">
-                      <Link
-                        href={`/course/${course.id}`}
-                        className="block w-full text-center bg-white border-2 border-blue-600 text-blue-600 group-hover:bg-blue-600 group-hover:text-white font-bold py-3 px-4 rounded-xl transition-all duration-200"
-                      >
-                        View Details & Enroll
-                      </Link>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              )
+              </div>
             ))
           ) : (
-            <div className="col-span-full text-center py-20 bg-gray-50 rounded-3xl border border-dashed border-gray-300">
-              <p className="text-gray-500 text-xl font-medium">
-                No public courses found.
-              </p>
-              <p className="text-gray-400 text-sm mt-2">
-                Log in to see your enrolled courses.
-              </p>
+            <div className="text-center py-24 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
+              <p className="text-gray-500 text-xl font-medium">No courses available in the catalog.</p>
             </div>
           )}
         </div>

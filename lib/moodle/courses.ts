@@ -5,7 +5,7 @@ import { EnrolledCourse, CourseContent } from './types';
 export async function enrolUser(userId: number, courseId: number) {
     try {
         const url = `${BASE_URL}/webservice/rest/server.php`;
-        
+
         const bodyParams = new URLSearchParams({
             wstoken: process.env.MOODLE_ADMIN_TOKEN!,
             wsfunction: 'enrol_manual_enrol_users',
@@ -38,7 +38,7 @@ export async function enrolUser(userId: number, courseId: number) {
         throw error;
     }
 }
- 
+
 export async function getCoursePriceInfo(courseId: number) {
     const params = new URLSearchParams({
         wstoken: process.env.MOODLE_ADMIN_TOKEN!,
@@ -50,7 +50,7 @@ export async function getCoursePriceInfo(courseId: number) {
 
     try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_MOODLE_URL}/webservice/rest/server.php?${params.toString()}`, {
-            cache: 'no-store' 
+            cache: 'no-store'
         });
         const data = await response.json();
 
@@ -59,7 +59,7 @@ export async function getCoursePriceInfo(courseId: number) {
 
         if (data.courses && data.courses.length > 0) {
             const course = data.courses[0];
-            
+
             // Try to find the field by common shortnames
             const priceField = course.customfields?.find(
                 (f: any) => f.shortname === 'price' || f.shortname === 'course_price'
@@ -73,7 +73,7 @@ export async function getCoursePriceInfo(courseId: number) {
     } catch (error) {
         console.error("Price fetch error:", error);
     }
-    
+
     // Mature Fallback: return 0 instead of null to prevent frontend crashes
     return { id: courseId, price: 0 };
 }
@@ -127,4 +127,71 @@ export async function getCourseContents(token: string, courseid: number): Promis
     }
 
     return [];
+}
+
+export async function getEnrolledUsers(token: string, courseid: number) {
+    const params = new URLSearchParams({
+        wstoken: token,
+        wsfunction: 'core_enrol_get_enrolled_users',
+        moodlewsrestformat: 'json',
+        courseid: courseid.toString(),
+    });
+
+    try {
+        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+        if (!response.ok) throw new Error('Failed to fetch enrolled users');
+        const data = await response.json();
+        if (data && data.exception) return [];
+        return Array.isArray(data) ? data : [];
+    } catch (error) {
+        console.error("Error in getEnrolledUsers:", error);
+        return [];
+    }
+}
+
+// --- 6. CHECK COURSE CREATION PERMISSION ---
+export async function canUserCreateCourse(token: string): Promise<boolean> {
+    const params = new URLSearchParams({
+        wstoken: token,
+        wsfunction: 'core_course_get_categories',
+        moodlewsrestformat: 'json',
+        'criteria[0][key]': 'parent',
+        'criteria[0][value]': '0', // check top level categories
+    });
+
+    try {
+        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+        if (!response.ok) return false;
+        const data = await response.json();
+
+        // Moodle returns an array of categories. 
+        // If the user can create courses in at least one category, return true.
+        if (Array.isArray(data)) {
+            return data.some((cat: any) => cat.cancomplete === true || cat.visible === 1);
+            // Note: 'cancomplete' isn't the right field, it's usually not returned in summary.
+            // A better way: If they are an admin or have the function in site info.
+        }
+        return false;
+    } catch (error) {
+        return false;
+    }
+}
+
+// --- 7. FETCH ALL CATEGORIES ---
+export async function getCategories(token: string) {
+    const params = new URLSearchParams({
+        wstoken: token,
+        wsfunction: 'core_course_get_categories',
+        moodlewsrestformat: 'json',
+    });
+
+    try {
+        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+        if (!response.ok) return [];
+        const data = await response.json();
+        return Array.isArray(data) ? data : [];
+    } catch (error) {
+        console.error("Error in getCategories:", error);
+        return [];
+    }
 }

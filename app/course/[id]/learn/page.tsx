@@ -14,6 +14,7 @@ export default async function CoursePage({ params }: PageProps) {
     const { id } = await params;
     const cookieStore = await cookies();
     const token = cookieStore.get('moodle_token')?.value;
+    const privateToken = cookieStore.get('moodle_private_token')?.value;
     const courseId = parseInt(id);
 
     if (!token) {
@@ -43,28 +44,27 @@ export default async function CoursePage({ params }: PageProps) {
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
-            {/* Navbar specific for Course Player */}
-            <nav className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 fixed top-0 w-full z-50">
+            {/* Navbar specific for Course Player (integrated with global) */}
+            {/* <div className="bg-gray-50 border-b border-gray-200 py-3 px-4 flex items-center justify-between sticky top-16 z-40 backdrop-blur-sm bg-white/70">
                 <Link
                     href={`/course/${courseId}`}
-                    className="flex items-center text-gray-500 hover:text-blue-600 transition-colors py-2 px-3 rounded-md hover:bg-gray-50"
+                    className="flex items-center text-gray-500 hover:text-blue-600 transition-colors py-1 px-2 rounded-md hover:bg-white"
                 >
-                    <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-5 h-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                     </svg>
-                    <span className="font-medium text-sm">Back to Course Details</span>
+                    <span className="font-medium text-xs">Back to Course</span>
                 </Link>
 
                 <div className="flex items-center space-x-4">
-                    <div className="text-sm font-bold text-gray-800 hidden sm:block truncate max-w-xs" title={courseName}>
+                    <div className="text-xs font-bold text-gray-800 hidden sm:block truncate max-w-[200px]" title={courseName}>
                         {courseName}
                     </div>
-                    {/* Could add Profile Dropdown here too */}
                 </div>
-            </nav>
+            </div> */}
 
-            {/* Main Player Area (offset for fixed navbar) */}
-            <div className="mt-16 flex-1">
+            {/* Main Player Area */}
+            <div className="flex-1 mt-4">
                 {error ? (
                     <div className="max-w-4xl mx-auto py-10 px-4">
                         <div className="bg-red-50 border-l-4 border-red-400 p-4">
@@ -77,7 +77,13 @@ export default async function CoursePage({ params }: PageProps) {
                         <p className="text-gray-500">No content found for this course.</p>
                     </div>
                 ) : (
-                    <CoursePlayer courseId={courseId} courseName={courseName} sections={contents} />
+                    <CoursePlayer
+                        courseId={courseId}
+                        courseName={courseName}
+                        sections={contents}
+                        token={token!}
+                        privateToken={privateToken || ''}
+                    />
                 )}
             </div>
         </div>

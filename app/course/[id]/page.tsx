@@ -1,6 +1,6 @@
 
 import { cookies } from 'next/headers';
-import { getCourseContents, getUserCourses, CourseContent, getCoursePriceInfo } from '@/lib/moodle/index';
+import { getCourseContents, getUserCourses, CourseContent, getCoursePriceInfo, getEnrolledUsers } from '@/lib/moodle/index';
 import { getUserId } from '@/app/(auth)/login/actions';
 import CourseLandingPage from '@/components/features/course/CourseLandingPage';
 import { notFound } from 'next/navigation';
@@ -55,7 +55,7 @@ async function getPublicCourse(courseId: number): Promise<PublicCourse | null> {
 
 export default async function CourseLandingContainer({ params }: CoursePageProps) {
     const { id } = await params;
- 
+
 
 
 
@@ -71,10 +71,20 @@ export default async function CourseLandingContainer({ params }: CoursePageProps
     }
 
     // 2. Fetch Syllabus (Server Token - Guests can see names of modules usually)
-    // We use the System Token to get the structure. 
-    // NOTE: core_course_get_contents might require enrollment for some tokens, 
-    // but usually admin tokens can see all.
     const systemToken = process.env.MOODLE_TOKEN || '';
+
+    // Fetch Instructors (Enrolled users with teacher role)
+    let instructors: any[] = [];
+    try {
+        const allEnrolled = await getEnrolledUsers(systemToken, courseId);
+        // Roles: 3 = editingteacher, 4 = teacher
+        instructors = allEnrolled.filter((u: any) =>
+            u.roles?.some((r: any) => r.roleid === 3 || r.roleid === 4)
+        );
+    } catch (e) {
+        console.warn("Could not fetch instructors", e);
+    }
+
     let sections: CourseContent[] = []; // Explicit type
     try {
         sections = await getCourseContents(systemToken, courseId);
@@ -94,33 +104,16 @@ export default async function CourseLandingContainer({ params }: CoursePageProps
         }
     }
 
-    // Prepare image URL with token if needed (though public files usually accessible? Moodle is tricky)
-    // We will pass the token-appended URL to the client if it's a private file, 
-    // but for public landing page, usually we want public files.
-    // Using systemToken for image might be risky if it exposes token in URL. 
-    // Better to use a valid public URL or proxy. For now, we assume standard Moodle behavior.
-    const imageurl = course.overviewfiles && course.overviewfiles.length > 0
-        ? `${course.overviewfiles[0].fileurl}?token=${systemToken}`
-        : undefined;
-    // 4. Fetch the real price from Moodle Custom Fields
     const priceData = await getCoursePriceInfo(Number(id));
- 
-
-    // 5. Prepare the refined course object for the UI
-    const refinedCourse = {
-        ...course,
-        imageurl: course.overviewfiles?.[0]?.fileurl
-            ? `${course.overviewfiles[0].fileurl}?token=${systemToken}`
-            : undefined
-    };
 
     return (
         <CourseLandingPage
-            course={refinedCourse}
-            price={priceData?.price ?? 0} // Injected real price
+            course={course}
+            price={priceData?.price ?? 0}
             isEnrolled={isEnrolled}
             sections={sections}
-            isLoggedIn={!!userToken} // New prop
+            isLoggedIn={!!userToken}
+            instructors={instructors}
         />
     );
 }
