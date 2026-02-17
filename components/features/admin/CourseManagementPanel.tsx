@@ -46,12 +46,15 @@ export default function CourseManagementPanel({ courses, categories }: CourseMan
   }, [courseSearch, courses]);
 
   const onSyncCourses = () => {
+    console.log('[admin][courses][client] sync click');
     startTransition(async () => {
       try {
         const result = await syncCoursesFromMoodleAction();
+        console.log('[admin][courses][client] sync result', result);
         setStatusMessage(result.message);
         if (result.ok) router.refresh();
       } catch (error: unknown) {
+        console.error('[admin][courses][client] sync error', error);
         setStatusMessage(error instanceof Error ? error.message : 'Failed to sync courses');
       }
     });

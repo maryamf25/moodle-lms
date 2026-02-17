@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getUserProfile } from "@/lib/moodle/user";
+import { getUserSessionContext } from "@/lib/moodle/user";
+import { prisma } from "@/lib/db/prisma";
 import { redirect } from "next/navigation";
 
 import MoodleBackgroundLogin from "./MoodleBackgroundLogin";
@@ -12,9 +14,25 @@ export default async function Navbar() {
     const privateToken = cookieStore.get("moodle_private_token")?.value;
 
     let userProfile = null;
+    let cartCount = 0;
+
     if (token) {
         try {
             userProfile = await getUserProfile(token);
+            // Get cart count for logged-in user
+            const session = await getUserSessionContext(token);
+            
+            // Get the user's internal ID
+            const user = await prisma.user.findUnique({
+                where: { moodleUserId: session.userid },
+            });
+
+            if (user) {
+                const cartItems = await prisma.cartItem.count({
+                    where: { userId: user.id },
+                });
+                cartCount = cartItems;
+            }
         } catch (e) {
             console.error("Navbar profile fetch error:", e);
         }
@@ -54,6 +72,22 @@ export default async function Navbar() {
                     <div className="flex items-center space-x-4">
                         {token && userProfile ? (
                             <div className="flex items-center space-x-4">
+                                {/* Cart Icon */}
+                                <Link
+                                    href="/cart"
+                                    className="relative text-gray-600 hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-gray-100"
+                                    title="Shopping Cart"
+                                >
+                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                                    </svg>
+                                    {cartCount > 0 && (
+                                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                                            {cartCount > 99 ? '99+' : cartCount}
+                                        </span>
+                                    )}
+                                </Link>
+
                                 <div className="flex items-center space-x-3">
                                     <span className="text-sm font-medium text-gray-700 hidden sm:block">
                                         {userProfile.fullname}

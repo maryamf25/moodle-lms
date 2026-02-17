@@ -54,6 +54,16 @@ export default async function AdminDashboardPage() {
     getMoodleCategoriesAdmin().catch(() => []),
   ]);
 
+  console.log(
+    '[admin][courses] dashboard catalog prices',
+    courses.map((course) => ({
+      moodleCourseId: course.moodleCourseId,
+      fullname: course.fullname,
+      price: Number(course.price),
+      isVisible: course.isVisible,
+    })),
+  );
+
   return (
     <div className="space-y-8">
       <CourseManagementPanel

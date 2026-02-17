@@ -101,7 +101,7 @@ function getKnownMoodleRoleIdsForUnassign(): number[] {
 
   const parsed = roleEnvValues
     .map((value) => (value ? Number(value) : null))
-    .filter((value): value is number => Boolean(value) && !Number.isNaN(value) && value > 0);
+    .filter((value): value is number => value !== null && !Number.isNaN(value) && value > 0);
 
   for (const fallback of [1, 5]) {
     if (!parsed.includes(fallback)) parsed.push(fallback);

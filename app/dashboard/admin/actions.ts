@@ -234,11 +234,19 @@ export async function assignRoleAction(input: AssignRoleInput): Promise<AdminAct
 
 export async function syncCoursesFromMoodleAction(): Promise<AdminActionResult> {
   const auth = await requireAppAuth('admin');
+  console.log('[admin][courses] sync action invoked', {
+    adminMoodleUserId: auth.moodleUserId,
+    adminUsername: auth.username,
+  });
   const actingAdmin = await ensureActingAdminUser(auth.moodleUserId, auth.username);
   const [moodleCourses, moodleCategories] = await Promise.all([
     getMoodleCoursesAdmin(),
     getMoodleCategoriesAdmin().catch(() => []),
   ]);
+  console.log('[admin][courses] moodle fetch completed', {
+    courseCount: moodleCourses.length,
+    categoryCount: moodleCategories.length,
+  });
   const categoryMap = new Map(moodleCategories.map((category) => [category.id, category.name]));
 
   await prisma.$transaction(async (tx) => {
@@ -248,6 +256,18 @@ export async function syncCoursesFromMoodleAction(): Promise<AdminActionResult> 
       const existing = await tx.courseCatalog.findUnique({
         where: { moodleCourseId: course.id },
         select: { price: true },
+      });
+      const existingPrice = existing ? Number(existing.price) : null;
+      const resolvedPrice =
+        existingPrice !== null
+          ? (existingPrice > 0 ? existingPrice : (course.moodlePrice ?? existingPrice))
+          : (course.moodlePrice ?? 0);
+      console.log('[admin][courses] sync upsert input', {
+        moodleCourseId: course.id,
+        fullname: course.fullname,
+        existingPrice,
+        moodlePrice: course.moodlePrice,
+        resolvedPrice,
       });
       await tx.courseCatalog.upsert({
         where: { moodleCourseId: course.id },
@@ -259,7 +279,7 @@ export async function syncCoursesFromMoodleAction(): Promise<AdminActionResult> 
           categoryId: course.categoryId,
           categoryName: course.categoryId ? categoryMap.get(course.categoryId) || null : null,
           isVisible: course.visible,
-          price: existing?.price ?? 0,
+          price: resolvedPrice,
           lastSyncedAt: new Date(),
         },
         update: {
@@ -269,6 +289,7 @@ export async function syncCoursesFromMoodleAction(): Promise<AdminActionResult> 
           categoryId: course.categoryId,
           categoryName: course.categoryId ? categoryMap.get(course.categoryId) || null : null,
           isVisible: course.visible,
+          price: resolvedPrice,
           lastSyncedAt: new Date(),
         },
       });
@@ -293,6 +314,27 @@ export async function syncCoursesFromMoodleAction(): Promise<AdminActionResult> 
       },
     });
   });
+  const catalogCount = await prisma.courseCatalog.count();
+  const coursePrices = await prisma.courseCatalog.findMany({
+    orderBy: { moodleCourseId: 'asc' },
+    select: {
+      moodleCourseId: true,
+      fullname: true,
+      price: true,
+    },
+  });
+  console.log('[admin][courses] local catalog synced', {
+    catalogCount,
+    syncedCount: moodleCourses.length,
+  });
+  console.log(
+    '[admin][courses] local catalog prices',
+    coursePrices.map((course) => ({
+      moodleCourseId: course.moodleCourseId,
+      fullname: course.fullname,
+      price: Number(course.price),
+    })),
+  );
 
   revalidatePath('/dashboard/admin');
   revalidatePath('/');
@@ -312,6 +354,11 @@ export async function setCoursePriceAction(input: SetCoursePriceInput): Promise<
 
   const actingAdmin = await ensureActingAdminUser(auth.moodleUserId, auth.username);
   const normalizedPrice = Number(input.price.toFixed(2));
+  console.log('[admin][pricing] setCoursePriceAction request', {
+    moodleCourseId: input.moodleCourseId,
+    inputPrice: input.price,
+    normalizedPrice,
+  });
 
   const existing = await prisma.courseCatalog.findUnique({
     where: { moodleCourseId: input.moodleCourseId },
@@ -337,6 +384,16 @@ export async function setCoursePriceAction(input: SetCoursePriceInput): Promise<
       },
     }),
   ]);
+
+  const verify = await prisma.courseCatalog.findUnique({
+    where: { moodleCourseId: input.moodleCourseId },
+    select: { moodleCourseId: true, fullname: true, price: true },
+  });
+  console.log('[admin][pricing] setCoursePriceAction stored', {
+    moodleCourseId: verify?.moodleCourseId,
+    fullname: verify?.fullname,
+    storedPrice: verify ? Number(verify.price) : null,
+  });
 
   revalidatePath('/dashboard/admin');
   revalidatePath(`/course/${input.moodleCourseId}`);

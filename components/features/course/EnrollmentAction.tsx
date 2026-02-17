@@ -2,8 +2,9 @@
 
 import { useState, useActionState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { addToCartAction } from '@/app/dashboard/cart/actions';
 import { quickEnroll } from '@/app/actions/enroll';
-import { enrollExistingUser } from '@/app/actions/enrollExisting';
 
 interface EnrollmentActionProps {
     course: { id: number };
@@ -11,10 +12,13 @@ interface EnrollmentActionProps {
     price: number;
     isLoggedIn: boolean;
 }
+
 export default function EnrollmentAction({ course, isEnrolled, price, isLoggedIn }: EnrollmentActionProps) {
-const [isModalOpen, setIsModalOpen] = useState(false);
+    const router = useRouter();
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [isNewUser, setIsNewUser] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
 
     const [state, formAction, isPending] = useActionState(quickEnroll, {});
@@ -26,24 +30,25 @@ const [isModalOpen, setIsModalOpen] = useState(false);
         }
     }, [state]);
 
-    // Handler for Logged In users
-    const handleEnrollExisting = async () => {
+    // Handler for Logged In users - Add to Cart
+    const handleAddToCart = async () => {
         setIsLoading(true);
         setErrorMessage('');
+        setSuccessMessage('');
         try {
-            // FIXED: Using course.id instead of courseId
-            const result = await enrollExistingUser(course.id);
-            
-            // If the server returns the URL instead of redirecting
-            if (result?.success && result.redirectUrl) {
-                window.location.href = result.redirectUrl;
-            } else if (result?.error) {
-                setErrorMessage(result.error);
+            const result = await addToCartAction(course.id.toString());
+            if (result.ok) {
+                setSuccessMessage(result.message);
+                setTimeout(() => {
+                    router.push('/cart');
+                }, 1500);
+            } else {
+                setErrorMessage(result.message);
                 setIsLoading(false);
             }
-        } catch (e) {
-            // Next.js redirect "errors" are caught here, but if the page moves, it's fine
-            console.log("Redirecting...");
+        } catch (error) {
+            setErrorMessage('Failed to add to cart');
+            setIsLoading(false);
         }
     };
 
@@ -64,14 +69,14 @@ const [isModalOpen, setIsModalOpen] = useState(false);
         return (
             <div className="space-y-4">
                 <button
-                    onClick={handleEnrollExisting}
+                    onClick={handleAddToCart}
                     disabled={isLoading}
                     className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-blue-500/30 flex justify-center items-center"
                 >
                     {isLoading ? (
                         <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
                     ) : (
-                        price > 0 ? `Pay PKR ${price.toLocaleString()}` : 'Enroll Now'
+                        `🛒 Add to Cart (PKR ${price.toLocaleString()})`
                     )}
                 </button>
                 {errorMessage && (
@@ -79,18 +84,23 @@ const [isModalOpen, setIsModalOpen] = useState(false);
                         {errorMessage}
                     </p>
                 )}
+                {successMessage && (
+                    <p className="text-sm text-green-600 text-center font-medium bg-green-50 p-2 rounded-lg">
+                        ✓ {successMessage}. Redirecting to cart...
+                    </p>
+                )}
             </div>
         );
     }
 
-    // Scenario 3: User needs to Login/Signup to Enroll
+    // Scenario 3: User needs to Login/Signup to Add to Cart
     return (
         <>
             <button
                 onClick={() => setIsModalOpen(true)}
                 className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-blue-500/30"
             >
-                {price > 0 ? `Enroll & Pay PKR ${price.toLocaleString()}` : 'Enroll Now'}
+                🛒 Add to Cart (PKR {price.toLocaleString()})
             </button>
 
             {isModalOpen && (
@@ -108,9 +118,7 @@ const [isModalOpen, setIsModalOpen] = useState(false);
                                 {isNewUser ? 'Create your account' : 'Welcome back'}
                             </h2>
                             <p className="text-gray-500 mb-6 text-sm">
-                                {price > 0
-                                    ? `Complete registration to proceed to payment of PKR ${price}.`
-                                    : 'Sign up to start learning for free.'}
+                                Sign up to add courses to your cart and start learning.
                             </p>
 
                             {state?.error && (
@@ -154,9 +162,7 @@ const [isModalOpen, setIsModalOpen] = useState(false);
                                     {isPending ? (
                                         <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
                                     ) : (
-                                        isNewUser
-                                            ? (price > 0 ? 'Sign Up & Pay' : 'Sign Up & Enroll')
-                                            : (price > 0 ? 'Login & Pay' : 'Login & Enroll')
+                                        isNewUser ? 'Sign Up & Add to Cart' : 'Login & Add to Cart'
                                     )}
                                 </button>
                             </form>

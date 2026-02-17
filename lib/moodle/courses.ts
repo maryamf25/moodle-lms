@@ -14,6 +14,8 @@ interface MoodleCoursePriceRow {
 
 interface MoodleCoursePriceResponse {
     courses?: MoodleCoursePriceRow[];
+    exception?: string;
+    message?: string;
 }
 
 interface MoodleModuleContent {
@@ -81,7 +83,16 @@ export async function getCoursePriceInfo(courseId: number) {
         where: { moodleCourseId: courseId },
         select: { price: true },
     });
+    console.log('[pricing] getCoursePriceInfo local lookup', {
+        courseId,
+        found: Boolean(localCourse),
+        localPrice: localCourse ? Number(localCourse.price) : null,
+    });
     if (localCourse) {
+        console.log('[pricing] getCoursePriceInfo source=local-db', {
+            courseId,
+            price: Number(localCourse.price),
+        });
         return {
             id: courseId,
             price: Number(localCourse.price),
@@ -101,6 +112,12 @@ export async function getCoursePriceInfo(courseId: number) {
             cache: 'no-store'
         });
         const data = await response.json();
+        console.log('[pricing] getCoursePriceInfo moodle response meta', {
+            courseId,
+            hasCourses: Boolean(data?.courses?.length),
+            hasException: Boolean(data?.exception),
+            message: data?.message ?? null,
+        });
 
         // Check terminal for this:
         console.log("--- MOODLE API RESPONSE ---", JSON.stringify(data, null, 2));
@@ -110,12 +127,19 @@ export async function getCoursePriceInfo(courseId: number) {
 
             // Try to find the field by common shortnames
             const priceField = course.customfields?.find(
-                (f) => f.shortname === 'price' || f.shortname === 'course_price'
+                (f: MoodleCustomField) => f.shortname === 'price' || f.shortname === 'course_price'
             );
+            const moodlePrice = priceField ? parseFloat(priceField.value || '0') : 0;
+            console.log('[pricing] getCoursePriceInfo source=moodle-customfield', {
+                courseId,
+                foundPriceField: Boolean(priceField),
+                rawValue: priceField?.value ?? null,
+                parsedPrice: moodlePrice,
+            });
 
             return {
                 id: course.id,
-                price: priceField ? parseFloat(priceField.value) : 0
+                price: moodlePrice
             };
         }
     } catch (error) {
@@ -123,6 +147,7 @@ export async function getCoursePriceInfo(courseId: number) {
     }
 
     // Mature Fallback: return 0 instead of null to prevent frontend crashes
+    console.log('[pricing] getCoursePriceInfo source=fallback-zero', { courseId });
     return { id: courseId, price: 0 };
 }
 // --- 3. FETCH USER COURSES ---
