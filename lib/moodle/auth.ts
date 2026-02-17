@@ -175,8 +175,13 @@ async function resolveCourseCategoryId(preferredCategoryId?: number): Promise<nu
 // --- 1. LOGIN FUNCTION ---
 export async function loginUser(username: string, password: string): Promise<{ token: string; privatetoken?: string; error?: string }> {
     try {
+        const normalizedUsername = username.trim();
+        if (!normalizedUsername || !password) {
+            return { token: '', error: 'Username and password are required' };
+        }
+
         const params = new URLSearchParams({
-            username: username,
+            username: normalizedUsername,
             password: password,
             service: SERVICE || 'moodle_mobile_app',
         });
@@ -191,13 +196,27 @@ export async function loginUser(username: string, password: string): Promise<{ t
             throw new Error(`Login failed with status: ${response.status}`);
         }
 
-        const data = await response.json();
-
-        if (data.error) {
-            return { token: '', error: data.error };
+        const data: unknown = await response.json();
+        if (typeof data !== 'object' || data === null) {
+            return { token: '', error: 'Unexpected Moodle login response' };
         }
 
-        return { token: data.token, privatetoken: data.privatetoken };
+        const payload = data as {
+            token?: string;
+            privatetoken?: string;
+            error?: string;
+            debuginfo?: string;
+        };
+
+        if (payload.error) {
+            return { token: '', error: payload.error };
+        }
+
+        if (!payload.token || typeof payload.token !== 'string') {
+            return { token: '', error: 'Invalid credentials or missing token' };
+        }
+
+        return { token: payload.token, privatetoken: payload.privatetoken };
     } catch (err: unknown) {
         console.error('Login error:', err);
         return { token: '', error: err instanceof Error ? err.message : 'Login failed' };

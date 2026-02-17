@@ -5,7 +5,6 @@ import { cookies } from 'next/headers';
 import { getCoursePriceInfo } from '@/lib/moodle/courses';
 import { getUserId } from '@/app/(auth)/login/actions';
 import { redirect } from 'next/navigation';
-import { isRedirectError } from 'next/dist/client/components/redirect-error';
 /**
  * 1. Shared Helper to initialize Safepay Session
  * This prevents "Session Validation" errors by performing the official handshake.
@@ -59,10 +58,16 @@ const url = `${baseUrl}?env=sandbox` +
 console.log("🔗 ATTEMPTING NEW ENDPOINT:", url);
 return url;
 
-    } catch (error: any) {
-        console.error("❌ SAFEPAY ERROR:", error.message);
+    } catch (error: unknown) {
+        console.error("❌ SAFEPAY ERROR:", error instanceof Error ? error.message : error);
         return `${process.env.NEXT_PUBLIC_URL}/payment-error`;
     }
+}
+
+function isNextRedirectError(error: unknown): error is { message?: string; digest?: string } {
+    if (typeof error !== 'object' || error === null) return false;
+    const candidate = error as { message?: unknown; digest?: unknown };
+    return typeof candidate.message === 'string' || typeof candidate.digest === 'string';
 }
 /**
  * 2. Action for users who are already logged in
@@ -91,13 +96,16 @@ export async function enrollExistingUser(courseId: number) {
         await enrolUser(userId, courseId);
         return { success: true, redirectUrl: `/course/${courseId}/learn` };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
     // Mature check: Next.js redirects are technically special "errors"
-    if (error.message === 'NEXT_REDIRECT' || error.digest?.includes('NEXT_REDIRECT')) {
+    if (
+        isNextRedirectError(error) &&
+        (error.message === 'NEXT_REDIRECT' || error.digest?.includes('NEXT_REDIRECT'))
+    ) {
         throw error; 
     }
 
     console.error("Actual Enrollment Error:", error);
-    return { error: error.message || 'Enrollment failed' };
+    return { error: error instanceof Error ? error.message : 'Enrollment failed' };
     }
 }

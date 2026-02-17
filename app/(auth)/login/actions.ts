@@ -3,10 +3,10 @@
 'use server';
 
 import { getDashboardPathForRole } from '@/lib/auth/roles';
+import { syncUserFromMoodleSession } from '@/lib/auth/user-store';
 import { getUserSessionContext } from '@/lib/moodle/user';
 import { loginUser } from '@/lib/moodle/auth';
 import { cookies } from 'next/headers';
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
 
 function authLog(message: string, data?: Record<string, unknown>) {
@@ -58,17 +58,22 @@ export async function getAutoLoginUrlAction(token: string, privateToken: string)
         if (data.exception) return { error: `Moodle Error: ${data.message}` };
         return { error: 'No auto-login key returned' };
 
-    } catch (error: any) {
-        return { error: error.message || 'Network error' };
+    } catch (error: unknown) {
+        return { error: error instanceof Error ? error.message : 'Network error' };
     }
 }
 
 export async function getUserSessionAction(token: string) {
     const session = await getUserSessionContext(token);
+    const appUser = await syncUserFromMoodleSession({
+        moodleUserId: session.userid,
+        username: session.username,
+        role: session.role,
+    });
     return {
         userId: session.userid,
-        role: session.role,
-        dashboardPath: getDashboardPathForRole(session.role),
+        role: appUser.role,
+        dashboardPath: getDashboardPathForRole(appUser.role),
     };
 }
 
@@ -86,12 +91,17 @@ export async function loginWithCredentialsAction(
     password: string,
     callbackUrl?: string | null
 ): Promise<LoginActionResult> {
+    const normalizedUsername = username.trim();
+    if (!normalizedUsername || !password) {
+        return { success: false, error: 'Username and password are required' };
+    }
+
     authLog('login started', {
-        username,
+        username: normalizedUsername,
         hasCallbackUrl: Boolean(callbackUrl),
     });
 
-    const loginResult = await loginUser(username, password);
+    const loginResult = await loginUser(normalizedUsername, password);
 
     if (!loginResult.token) {
         authLog('login failed at token request', {
@@ -102,7 +112,20 @@ export async function loginWithCredentialsAction(
     }
 
     const session = await getUserSessionContext(loginResult.token);
-    const dashboardPath = getDashboardPathForRole(session.role);
+    if (!normalizedUsername.includes('@') && session.username.toLowerCase() !== normalizedUsername.toLowerCase()) {
+        authLog('credential mismatch after token validation', {
+            requestedUsername: normalizedUsername,
+            sessionUsername: session.username,
+        });
+        return { success: false, error: 'Invalid credentials' };
+    }
+
+    const appUser = await syncUserFromMoodleSession({
+        moodleUserId: session.userid,
+        username: session.username,
+        role: session.role,
+    });
+    const dashboardPath = getDashboardPathForRole(appUser.role);
     const safeCallbackUrl =
         callbackUrl && callbackUrl.startsWith('/') && !callbackUrl.startsWith('//')
             ? callbackUrl
@@ -114,8 +137,9 @@ export async function loginWithCredentialsAction(
         httpOnly: true,
         path: '/',
     });
-    cookieStore.set('moodle_role', session.role, {
+    cookieStore.set('moodle_role', appUser.role, {
         secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
         path: '/',
     });
     if (loginResult.privatetoken) {
@@ -128,22 +152,22 @@ export async function loginWithCredentialsAction(
     console.log('[auth][login] resolved role for user', {
         username: session.username,
         userid: session.userid,
-        resolvedRole: session.role,
+        resolvedRole: appUser.role,
         redirectPath: safeCallbackUrl || dashboardPath,
     });
     authLog('login success and cookies set', {
         userid: session.userid,
         username: session.username,
-        resolvedRole: session.role,
+        resolvedRole: appUser.role,
         dashboardPath,
         redirectPath: safeCallbackUrl || dashboardPath,
-        roleCookieValue: session.role,
+        roleCookieValue: appUser.role,
     });
 
     return {
         success: true,
         redirectPath: safeCallbackUrl || dashboardPath,
-        role: session.role,
+        role: appUser.role,
         token: loginResult.token,
         privateToken: loginResult.privatetoken,
     };

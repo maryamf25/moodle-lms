@@ -1,9 +1,6 @@
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { getDashboardPathForRole, normalizeRole } from '@/lib/auth/roles';
 import { getUserCourses, getUserProfile, EnrolledCourse, UserProfile } from '@/lib/moodle';
-import { getUserId } from '@/app/(auth)/login/actions';
+import { requireAppAuth } from '@/lib/auth/server-session';
 
 function calculateAverageProgress(courses: EnrolledCourse[]): number {
     if (courses.length === 0) return 0;
@@ -12,29 +9,23 @@ function calculateAverageProgress(courses: EnrolledCourse[]): number {
 }
 
 export default async function StudentDashboardPage() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('moodle_token')?.value;
-    const roleCookie = cookieStore.get('moodle_role')?.value;
-    const roleFromCookie = roleCookie ? normalizeRole(roleCookie) : null;
-
-    if (!token) redirect('/login');
-    if (!roleFromCookie) redirect('/dashboard');
-    if (roleFromCookie !== 'student') {
-        redirect(getDashboardPathForRole(roleFromCookie));
-    }
+    const auth = await requireAppAuth('student');
+    const token = auth.token;
 
     let courses: EnrolledCourse[] = [];
     let userProfile: UserProfile | null = null;
     let error = '';
 
     try {
-        const userid = await getUserId(token);
         const [coursesData, profileData] = await Promise.all([
-            getUserCourses(token, userid),
+            getUserCourses(token, auth.moodleUserId),
             getUserProfile(token),
         ]);
         courses = coursesData;
         userProfile = profileData;
+        if (userProfile) {
+            userProfile.role = auth.role;
+        }
     } catch (err: unknown) {
         error = err instanceof Error ? err.message : 'Failed to load student dashboard';
     }

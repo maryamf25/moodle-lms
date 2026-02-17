@@ -78,18 +78,11 @@ interface MoodleUserRoleResponse {
     name?: string;
 }
 
-interface MoodleEnrolledUser {
-    id?: number;
-    roles?: Array<{ roleid?: number; shortname?: string; name?: string }>;
-}
-
-const MOODLE_ROLE_EDITING_TEACHER = 3;
-const MOODLE_ROLE_NON_EDITING_TEACHER = 4;
-const MOODLE_CONTEXT_SYSTEM = 10;
-
-function isTeacherRoleId(roleid?: number): boolean {
-    return roleid === MOODLE_ROLE_EDITING_TEACHER || roleid === MOODLE_ROLE_NON_EDITING_TEACHER;
-}
+const ROLE_KEYWORDS: Array<{ role: MoodleRole; keywords: string[] }> = [
+    { role: 'school', keywords: ['school', 'organization', 'organisation'] },
+    { role: 'parent', keywords: ['parent', 'guardian'] },
+    { role: 'student', keywords: ['student', 'learner'] },
+];
 
 async function getSiteInfo(token: string): Promise<MoodleSiteInfoResponse> {
     const params = new URLSearchParams({
@@ -146,107 +139,19 @@ async function fetchRoleAssignments(token: string, userid: number, tokenSource: 
     return data as MoodleUserRoleResponse[];
 }
 
-async function fetchUserCourseIds(token: string, userid: number, tokenSource: 'admin' | 'user'): Promise<number[]> {
-    const params = new URLSearchParams({
-        wstoken: token,
-        wsfunction: 'core_enrol_get_users_courses',
-        moodlewsrestformat: 'json',
-        userid: String(userid),
-    });
-
-    const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-    if (!response.ok) {
-        authLog('failed to fetch enrolled courses', {
-            tokenSource,
-            userid,
-            status: response.status,
-        });
-        return [];
-    }
-
-    const data: unknown = await response.json();
-    if (!Array.isArray(data)) {
-        authLog('enrolled courses response is not array', {
-            tokenSource,
-            userid,
-        });
-        return [];
-    }
-
-    const courseIds = data
-        .map((course) => (course as { id?: number }).id)
-        .filter((id): id is number => typeof id === 'number');
-    authLog('fetched enrolled courses', {
-        tokenSource,
-        userid,
-        courseCount: courseIds.length,
-    });
-    return courseIds;
+function extractRoleText(roles: MoodleUserRoleResponse[]): string {
+    return roles
+        .map((role) => `${role.shortname ?? ''} ${role.name ?? ''}`.toLowerCase().trim())
+        .join(' ');
 }
 
-async function hasTeacherRoleInCourse(token: string, courseid: number, userid: number, tokenSource: 'admin' | 'user'): Promise<boolean> {
-    const params = new URLSearchParams({
-        wstoken: token,
-        wsfunction: 'core_enrol_get_enrolled_users',
-        moodlewsrestformat: 'json',
-        courseid: String(courseid),
-    });
-
-    const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-    if (!response.ok) {
-        authLog('failed to fetch enrolled users for course', {
-            tokenSource,
-            userid,
-            courseid,
-            status: response.status,
-        });
-        return false;
-    }
-
-    const data: unknown = await response.json();
-    if (!Array.isArray(data)) {
-        authLog('enrolled users response is not array', {
-            tokenSource,
-            userid,
-            courseid,
-        });
-        return false;
-    }
-
-    const userRow = (data as MoodleEnrolledUser[]).find((row) => row.id === userid);
-    if (!userRow || !Array.isArray(userRow.roles)) {
-        return false;
-    }
-
-    const roleIds = userRow.roles.map((role) => role.roleid).filter((id): id is number => typeof id === 'number');
-    const isTeacherInCourse = roleIds.some((roleid) => isTeacherRoleId(roleid));
-    authLog('checked course-level roles', {
-        tokenSource,
-        userid,
-        courseid,
-        roleIds,
-        isTeacherInCourse,
-    });
-
-    return isTeacherInCourse;
-}
-
-async function hasTeacherRoleInAnyCourse(token: string, userid: number, tokenSource: 'admin' | 'user'): Promise<boolean> {
-    const courseIds = await fetchUserCourseIds(token, userid, tokenSource);
-    if (courseIds.length === 0) return false;
-
-    for (const courseid of courseIds) {
-        if (await hasTeacherRoleInCourse(token, courseid, userid, tokenSource)) {
-            authLog('teacher role found in course', {
-                tokenSource,
-                userid,
-                courseid,
-            });
-            return true;
+function resolveRoleFromRoleText(roleText: string): MoodleRole | null {
+    for (const candidate of ROLE_KEYWORDS) {
+        if (candidate.keywords.some((keyword) => roleText.includes(keyword))) {
+            return candidate.role;
         }
     }
-
-    return false;
+    return null;
 }
 
 export async function getUserRole(token: string, siteInfo?: MoodleSiteInfoResponse): Promise<MoodleRole> {
@@ -264,49 +169,32 @@ export async function getUserRole(token: string, siteInfo?: MoodleSiteInfoRespon
 
     try {
         let roleToken: string | null = null;
-        let roleTokenSource: 'admin' | 'user' = 'user';
         const adminToken = process.env.MOODLE_ADMIN_TOKEN;
         if (adminToken) {
             roleToken = adminToken;
-            roleTokenSource = 'admin';
         } else {
             roleToken = token;
-            roleTokenSource = 'user';
         }
 
         let assignedRoles: MoodleUserRoleResponse[] | null = null;
         if (roleToken) {
-            assignedRoles = await fetchRoleAssignments(roleToken, info.userid, roleTokenSource);
+            assignedRoles = await fetchRoleAssignments(roleToken, info.userid, adminToken ? 'admin' : 'user');
         }
 
-        if (!assignedRoles && roleTokenSource === 'admin') {
+        if (!assignedRoles && adminToken) {
             assignedRoles = await fetchRoleAssignments(token, info.userid, 'user');
         }
 
-        const hasSystemTeacherRole = (assignedRoles || []).some(
-            (role) => role.contextlevel === MOODLE_CONTEXT_SYSTEM && isTeacherRoleId(role.roleid)
-        );
-        authLog('system-level teacher role check', {
+        const roleNames = extractRoleText(assignedRoles || []);
+
+        authLog('resolved role names', {
             userid: info.userid,
-            hasSystemTeacherRole,
-            rolesChecked: (assignedRoles || []).length,
+            roleNames,
         });
 
-        let hasCourseTeacherRole = false;
-        if (roleToken) {
-            hasCourseTeacherRole = await hasTeacherRoleInAnyCourse(roleToken, info.userid, roleTokenSource);
-        }
-        if (!hasCourseTeacherRole && roleTokenSource === 'admin') {
-            hasCourseTeacherRole = await hasTeacherRoleInAnyCourse(token, info.userid, 'user');
-        }
-        authLog('course-level teacher role check', {
-            userid: info.userid,
-            hasCourseTeacherRole,
-        });
-
-        if (hasSystemTeacherRole || hasCourseTeacherRole) {
-            authLog('resolved as teacher from system/course role checks');
-            return 'teacher';
+        const resolvedRole = resolveRoleFromRoleText(roleNames);
+        if (resolvedRole) {
+            return resolvedRole;
         }
     } catch (error) {
         console.warn('Unable to resolve Moodle role, defaulting to student:', error);

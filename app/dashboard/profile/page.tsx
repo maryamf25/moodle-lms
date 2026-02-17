@@ -1,29 +1,22 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { getFullUserProfile, getUserProfile } from "@/lib/moodle/user";
-import { getUserId } from "@/app/(auth)/login/actions";
+import { requireAppAuth } from "@/lib/auth/server-session";
 
 export default async function ProfilePage() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("moodle_token")?.value;
-
-    if (!token) redirect("/login");
-
-    const roleCookie = cookieStore.get("moodle_role")?.value;
+    const auth = await requireAppAuth();
+    const token = auth.token;
     let userDetails = null;
     let basicProfile = null;
 
     try {
-        const userid = await getUserId(token);
         const [full, basic] = await Promise.all([
-            getFullUserProfile(token, userid),
+            getFullUserProfile(token, auth.moodleUserId),
             getUserProfile(token)
         ]);
         userDetails = full;
         basicProfile = basic;
 
-        if (basicProfile && roleCookie) {
-            basicProfile.role = roleCookie as any;
+        if (basicProfile) {
+            basicProfile.role = auth.role;
         }
     } catch (e) {
         console.error("Profile load error:", e);

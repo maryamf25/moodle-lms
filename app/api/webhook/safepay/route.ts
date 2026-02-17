@@ -27,8 +27,8 @@ export async function POST(req: Request) {
 
         console.log("⚠️ Webhook ignored: Condition not met.");
         return NextResponse.json({ status: 'ignored' });
-    } catch (error: any) {
-        console.error("❌ WEBHOOK ERROR:", error.message);
+    } catch (error: unknown) {
+        console.error("❌ WEBHOOK ERROR:", error instanceof Error ? error.message : error);
         return NextResponse.json({ error: 'Failed' }, { status: 500 });
     }
 }

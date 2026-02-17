@@ -32,8 +32,8 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true, message: 'Enrolled successfully' });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Payment Verification Error:", error);
-        return NextResponse.json({ error: error.message || 'Verification failed' }, { status: 500 });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Verification failed' }, { status: 500 });
     }
 }

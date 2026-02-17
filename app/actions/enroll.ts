@@ -1,12 +1,12 @@
 
 'use server';
 
-import { loginUser, registerUser, enrolUser, getUserByEmail, UserData } from '@/lib/moodle/index';
+import { loginUser, registerUser, enrolUser, getUserByEmail } from '@/lib/moodle/index';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getCoursePriceInfo } from '@/lib/moodle/courses'; // Import your new helper
-import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import { getUserSessionContext } from '@/lib/moodle/user';
+import { syncUserFromMoodleSession } from '@/lib/auth/user-store';
 interface EnrollmentState {
     success?: boolean;
     error?: string;
@@ -14,7 +14,18 @@ interface EnrollmentState {
     redirectUrl?: string; // Where to go after success
 }
 
-export async function quickEnroll(prevState: any, formData: FormData): Promise<EnrollmentState> {
+interface SafepayInitResponse {
+    status?: { message?: string };
+    data?: { token?: string };
+}
+
+function isNextRedirectError(error: unknown): error is { message?: string; digest?: string } {
+    if (typeof error !== 'object' || error === null) return false;
+    const candidate = error as { message?: unknown; digest?: unknown };
+    return typeof candidate.message === 'string' || typeof candidate.digest === 'string';
+}
+
+export async function quickEnroll(prevState: unknown, formData: FormData): Promise<EnrollmentState> {
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
     const firstname = formData.get('firstname') as string;
@@ -50,7 +61,7 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
         } else {
             // Existing user - Verify by logging in first to get token/id or just trust email?
             // Safer to just try login first
-            const loginData = await loginUser(email, password); // Moodle often allows email login if config enabled, else need username
+            await loginUser(email, password); // Moodle often allows email login if config enabled, else need username
             // If login fails with email, we might need to fetch username first?
             // Let's assume username login for now or check if we can get username from email
 
@@ -88,6 +99,11 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
         const loginRes = await loginUser(username, password);
         if (loginRes.error) throw new Error(loginRes.error);
         const session = await getUserSessionContext(loginRes.token);
+        const appUser = await syncUserFromMoodleSession({
+            moodleUserId: session.userid,
+            username: session.username,
+            role: session.role,
+        });
 
   const courseInfo = await getCoursePriceInfo(courseId);
         const isPaidCourse = courseInfo && courseInfo.price > 0;
@@ -105,8 +121,9 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
             httpOnly: true,
             path: '/'
         });
-        cookieStore.set('moodle_role', session.role, {
+        cookieStore.set('moodle_role', appUser.role, {
             secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
             path: '/'
         });
 
@@ -125,8 +142,9 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
             httpOnly: true,
             path: '/'
         });
-        cookieStore.set('moodle_role', session.role, {
+        cookieStore.set('moodle_role', appUser.role, {
             secure: process.env.NODE_ENV === 'production',
+            httpOnly: true,
             path: '/'
         });
 
@@ -135,14 +153,17 @@ export async function quickEnroll(prevState: any, formData: FormData): Promise<E
             redirectUrl: `/course/${courseId}/learn`
         };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
    // Mature check: Next.js redirects are technically special "errors"
-    if (error.message === 'NEXT_REDIRECT' || error.digest?.includes('NEXT_REDIRECT')) {
+    if (
+        isNextRedirectError(error) &&
+        (error.message === 'NEXT_REDIRECT' || error.digest?.includes('NEXT_REDIRECT'))
+    ) {
         throw error; 
     }
 
     console.error("Actual Enrollment Error:", error);
-    return { error: error.message || 'Enrollment failed' };
+    return { error: error instanceof Error ? error.message : 'Enrollment failed' };
     }
 }
 async function generateSafepayLink(courseId: number, amount: number, userId: string) {
@@ -171,7 +192,7 @@ async function generateSafepayLink(courseId: number, amount: number, userId: str
             })
         });
 
-        const resData = await response.json();
+        const resData = await response.json() as SafepayInitResponse;
         
         // Debug: Log the response to see if Safepay is returning an error message
         console.log("Safepay Init Response:", JSON.stringify(resData));
@@ -194,8 +215,8 @@ const url = `${baseUrl}?env=sandbox` +
 console.log("🔗 ATTEMPTING NEW ENDPOINT:", url);
 return url;
 
-    } catch (error: any) {
-        console.error("❌ SAFEPAY ERROR:", error.message);
+    } catch (error: unknown) {
+        console.error("❌ SAFEPAY ERROR:", error instanceof Error ? error.message : error);
         return `${process.env.NEXT_PUBLIC_URL}/payment-error`;
     }
 }

@@ -1,42 +1,36 @@
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getUserCourses, getUserProfile, EnrolledCourse, UserProfile } from '@/lib/moodle/index';
-import { getUserId } from '@/app/(auth)/login/actions';
-import { normalizeRole } from '@/lib/auth/roles';
+import { requireAppAuth } from '@/lib/auth/server-session';
 
 export default async function Dashboard() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('moodle_token')?.value;
-    const roleFromCookie = normalizeRole(cookieStore.get('moodle_role')?.value);
-
-    if (!token) {
-        redirect('/login');
-    }
+    const auth = await requireAppAuth();
+    const token = auth.token;
 
     let courses: EnrolledCourse[] = [];
     let userProfile: UserProfile | null = null;
     let error = '';
 
     try {
-        const userid = await getUserId(token);
         // Fetch courses and profile in parallel
         const [coursesData, profileData] = await Promise.all([
-            getUserCourses(token, userid),
+            getUserCourses(token, auth.moodleUserId),
             getUserProfile(token)
         ]);
         courses = coursesData;
         userProfile = profileData;
+        if (userProfile) {
+            userProfile.role = auth.role;
+        }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error("Dashboard Error:", err);
-        error = err.message || 'Failed to load courses';
-        if (err.message && err.message.includes('token')) {
+        error = err instanceof Error ? err.message : 'Failed to load courses';
+        if (err instanceof Error && err.message.includes('token')) {
             // redirect('/login'); // Optional: force re-login
         }
     }
 
-    const userRole = userProfile?.role ?? roleFromCookie;
+    const userRole = userProfile?.role ?? auth.role;
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -46,7 +40,13 @@ export default async function Dashboard() {
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">
-                                {userRole === 'admin' ? 'Admin Dashboard' : userRole === 'teacher' ? 'Teacher Dashboard' : 'My Learning'}
+                                {userRole === 'admin'
+                                    ? 'Admin Dashboard'
+                                    : userRole === 'parent'
+                                        ? 'Parent Dashboard'
+                                        : userRole === 'school'
+                                            ? 'School Dashboard'
+                                            : 'My Learning'}
                             </h1>
                             {userProfile && (
                                 <div className="text-sm text-gray-500 mt-1">
@@ -55,16 +55,14 @@ export default async function Dashboard() {
                             )}
                         </div>
 
-                        {(userRole === 'admin' || userRole === 'teacher') && (
+                        {userRole === 'admin' && (
                             <div className="flex space-x-3">
                                 <a href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/course/management.php`} target="_blank" className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors">
                                     Manage Courses
                                 </a>
-                                {userRole === 'admin' && (
-                                    <a href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/user.php`} target="_blank" className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors">
-                                        Manage Users
-                                    </a>
-                                )}
+                                <a href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/user.php`} target="_blank" className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors">
+                                    Manage Users
+                                </a>
                             </div>
                         )}
                     </div>
@@ -106,7 +104,9 @@ export default async function Dashboard() {
                     )}
 
                     {/* Course Grid */}
-                    <h2 className="text-xl font-bold text-gray-900 mb-4">{userRole === 'admin' ? 'All Courses Overview' : userRole === 'teacher' ? 'Teaching Courses' : 'Enrolled Courses'}</h2>
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">
+                        {userRole === 'admin' ? 'All Courses Overview' : 'Enrolled Courses'}
+                    </h2>
 
                     {courses.length === 0 && !error ? (
                         <div className="text-center py-20 bg-white rounded-lg shadow-sm border border-gray-100">
@@ -180,9 +180,9 @@ export default async function Dashboard() {
                                                     href={`/course/${course.id}/learn`}
                                                     className="flex-1 block w-full text-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
                                                 >
-                                                    {userRole === 'admin' ? 'Preview' : userRole === 'teacher' ? 'Open' : 'Continue'}
+                                                    {userRole === 'admin' ? 'Preview' : 'Continue'}
                                                 </Link>
-                                                {(userRole === 'admin' || userRole === 'teacher') && (
+                                                {userRole === 'admin' && (
                                                     <a
                                                         href={`${process.env.NEXT_PUBLIC_MOODLE_URL}/course/view.php?id=${course.id}`}
                                                         target="_blank"

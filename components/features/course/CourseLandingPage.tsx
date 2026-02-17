@@ -18,7 +18,12 @@ interface CourseLandingPageProps {
     isEnrolled: boolean;
     price: number;
     isLoggedIn: boolean; // Added isLoggedIn
-    instructors: any[];
+    instructors: Array<{
+        id: number;
+        fullname: string;
+        profileimageurl?: string;
+        roles?: Array<{ shortname?: string }>;
+    }>;
 }
 
 export default function CourseLandingPage({ course, sections, isEnrolled, price, isLoggedIn, instructors }: CourseLandingPageProps) {
@@ -59,7 +64,7 @@ export default function CourseLandingPage({ course, sections, isEnrolled, price,
                                             <div>
                                                 <h3 className="font-bold text-lg text-gray-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{instructor.fullname}</h3>
                                                 <p className="text-gray-500 text-sm font-medium">
-                                                    {instructor.roles?.map((r: any) => r.shortname).join(', ') || 'Instructor'}
+                                                    {instructor.roles?.map((r) => r.shortname).filter(Boolean).join(', ') || 'Instructor'}
                                                 </p>
                                             </div>
                                         </div>

@@ -13,7 +13,20 @@ interface PublicCourse {
     summary: string;
     startdate: number;
     enddate: number;
+    visible?: number;
     overviewfiles?: { fileurl: string }[];
+}
+
+interface EnrolledUserRole {
+    roleid: number;
+    shortname?: string;
+}
+
+interface EnrolledUser {
+    id: number;
+    fullname: string;
+    profileimageurl?: string;
+    roles?: EnrolledUserRole[];
 }
 
 // Next.js 15+ Params are Promises
@@ -46,7 +59,11 @@ async function getPublicCourse(courseId: number): Promise<PublicCourse | null> {
         if (data.exception || !Array.isArray(data) || data.length === 0) {
             return null;
         }
-        return data[0] as PublicCourse;
+        const course = data[0] as PublicCourse;
+        if (course.visible === 0) {
+            return null;
+        }
+        return course;
     } catch (e) {
         console.error("Failed to fetch public course", e);
         return null;
@@ -74,12 +91,12 @@ export default async function CourseLandingContainer({ params }: CoursePageProps
     const systemToken = process.env.MOODLE_TOKEN || '';
 
     // Fetch Instructors (Enrolled users with teacher role)
-    let instructors: any[] = [];
+    let instructors: EnrolledUser[] = [];
     try {
-        const allEnrolled = await getEnrolledUsers(systemToken, courseId);
+        const allEnrolled = await getEnrolledUsers(systemToken, courseId) as EnrolledUser[];
         // Roles: 3 = editingteacher, 4 = teacher
-        instructors = allEnrolled.filter((u: any) =>
-            u.roles?.some((r: any) => r.roleid === 3 || r.roleid === 4)
+        instructors = allEnrolled.filter((u) =>
+            u.roles?.some((r) => r.roleid === 3 || r.roleid === 4)
         );
     } catch (e) {
         console.warn("Could not fetch instructors", e);

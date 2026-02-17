@@ -1,5 +1,42 @@
 import { BASE_URL } from './api';
 import { EnrolledCourse, CourseContent } from './types';
+import { prisma } from '@/lib/db/prisma';
+
+interface MoodleCustomField {
+    shortname?: string;
+    value?: string;
+}
+
+interface MoodleCoursePriceRow {
+    id: number;
+    customfields?: MoodleCustomField[];
+}
+
+interface MoodleCoursePriceResponse {
+    courses?: MoodleCoursePriceRow[];
+}
+
+interface MoodleModuleContent {
+    fileurl?: string;
+    filename?: string;
+}
+
+interface MoodleModule {
+    contents?: MoodleModuleContent[];
+}
+
+interface MoodleSection {
+    modules: MoodleModule[];
+}
+
+interface MoodleCategorySummary {
+    cancomplete?: boolean;
+    visible?: number;
+}
+
+function getCourseAdminToken(): string {
+    return process.env.MOODLE_ADMIN_MANAGE || process.env.MOODLE_ADMIN_TOKEN || '';
+}
 
 // --- Enroll User Function ---
 export async function enrolUser(userId: number, courseId: number) {
@@ -23,7 +60,7 @@ export async function enrolUser(userId: number, courseId: number) {
             body: bodyParams.toString(),
         });
 
-        const data = await response.json();
+        const data = await response.json() as MoodleCoursePriceResponse;
 
         // Moodle returns null/empty array on success, but an object on error
         if (data && data.exception) {
@@ -40,8 +77,19 @@ export async function enrolUser(userId: number, courseId: number) {
 }
 
 export async function getCoursePriceInfo(courseId: number) {
+    const localCourse = await prisma.courseCatalog.findUnique({
+        where: { moodleCourseId: courseId },
+        select: { price: true },
+    });
+    if (localCourse) {
+        return {
+            id: courseId,
+            price: Number(localCourse.price),
+        };
+    }
+
     const params = new URLSearchParams({
-        wstoken: process.env.MOODLE_ADMIN_TOKEN!,
+        wstoken: getCourseAdminToken(),
         wsfunction: 'core_course_get_courses_by_field',
         moodlewsrestformat: 'json',
         field: 'id',
@@ -62,7 +110,7 @@ export async function getCoursePriceInfo(courseId: number) {
 
             // Try to find the field by common shortnames
             const priceField = course.customfields?.find(
-                (f: any) => f.shortname === 'price' || f.shortname === 'course_price'
+                (f) => f.shortname === 'price' || f.shortname === 'course_price'
             );
 
             return {
@@ -92,7 +140,7 @@ export async function getUserCourses(token: string, userid: number): Promise<Enr
     const data = await response.json();
     if (Array.isArray(data)) {
         // Helper to extract image if needed, or just return data
-        return data.map((course: any) => ({
+        return data.map((course: EnrolledCourse) => ({
             ...course,
             fileurl: course.overviewfiles?.[0]?.fileurl?.replace('?token=', `?token=${token}`) || '' // naive token append
         }));
@@ -116,14 +164,14 @@ export async function getCourseContents(token: string, courseid: number): Promis
 
     if (Array.isArray(data)) {
         // Process modules to add convenience fields
-        return data.map((section: any) => ({
+        return data.map((section: MoodleSection) => ({
             ...section,
-            modules: section.modules.map((mod: any) => ({
+            modules: section.modules.map((mod: MoodleModule) => ({
                 ...mod,
                 fileurl: mod.contents?.[0]?.fileurl || '',
                 filename: mod.contents?.[0]?.filename || ''
             }))
-        }));
+        })) as CourseContent[];
     }
 
     return [];
@@ -167,7 +215,7 @@ export async function canUserCreateCourse(token: string): Promise<boolean> {
         // Moodle returns an array of categories. 
         // If the user can create courses in at least one category, return true.
         if (Array.isArray(data)) {
-            return data.some((cat: any) => cat.cancomplete === true || cat.visible === 1);
+            return data.some((cat: MoodleCategorySummary) => cat.cancomplete === true || cat.visible === 1);
             // Note: 'cancomplete' isn't the right field, it's usually not returned in summary.
             // A better way: If they are an admin or have the function in site info.
         }

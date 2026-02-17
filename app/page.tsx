@@ -12,7 +12,14 @@ interface Course {
   startdate: number;
   enddate: number;
   format: string;
+  visible?: number;
+  categoryid?: number;
   overviewfiles?: { fileurl: string }[];
+}
+
+interface CourseCategory {
+  id: number;
+  name: string;
 }
 
 async function getCourses(): Promise<Course[]> {
@@ -40,20 +47,21 @@ async function getCourses(): Promise<Course[]> {
 
     const text = await res.text();
 
-    let data;
+    let data: unknown;
     try {
       data = JSON.parse(text);
-    } catch (e) {
+    } catch {
       console.error("Invalid JSON received:", text);
       return [];
     }
 
-    if (data.exception) {
-      console.error(`Moodle API Error: ${data.message} (${data.errorcode})`);
+    if (typeof data === 'object' && data !== null && 'exception' in data) {
+      const apiError = data as { message?: string; errorcode?: string };
+      console.error(`Moodle API Error: ${apiError.message} (${apiError.errorcode})`);
       return [];
     }
 
-    return data as Course[];
+    return Array.isArray(data) ? data as Course[] : [];
 
   } catch (error) {
     console.error('Error fetching courses:', error);
@@ -74,12 +82,12 @@ const formatDate = (timestamp: number) => {
 export default async function Home() {
   const courses = await getCourses();
   const token = process.env.MOODLE_TOKEN || '';
-  const categories = await getCategories(token);
+  const categories = await getCategories(token) as CourseCategory[];
 
   // Group courses by category
   const coursesByCategory = courses.reduce((acc: Record<string, Course[]>, course) => {
-    if (course.format === 'site') return acc;
-    const cat = categories.find((c: any) => c.id === (course as any).categoryid);
+    if (course.format === 'site' || course.visible === 0) return acc;
+    const cat = categories.find((c) => c.id === course.categoryid);
     const catName = cat ? cat.name : 'Other Courses';
     if (!acc[catName]) acc[catName] = [];
     acc[catName].push(course);

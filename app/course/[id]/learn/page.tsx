@@ -37,9 +37,9 @@ export default async function CoursePage({ params }: PageProps) {
             courseName = course.fullname;
         }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error("Course Page Error:", err);
-        error = err.message || 'Failed to load course content';
+        error = err instanceof Error ? err.message : 'Failed to load course content';
     }
 
     return (

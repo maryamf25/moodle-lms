@@ -1,6 +1,5 @@
 // Dashboard layout with sidebar navigation
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireAppAuth } from "@/lib/auth/server-session";
 import { getUserProfile } from "@/lib/moodle/user";
 import DashboardSidebar from "../../components/DashboardSidebar";
 
@@ -9,20 +8,15 @@ export default async function DashboardLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("moodle_token")?.value;
-
-    if (!token) {
-        redirect("/login");
-    }
+    const auth = await requireAppAuth();
+    const token = auth.token;
 
     let userProfile = null;
-    const roleCookie = cookieStore.get("moodle_role")?.value;
 
     try {
         userProfile = await getUserProfile(token);
-        if (userProfile && roleCookie) {
-            userProfile.role = roleCookie as any;
+        if (userProfile) {
+            userProfile.role = auth.role;
         }
     } catch (e) {
         console.error("Dashboard layout profile fetch error:", e);

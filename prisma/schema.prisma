@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  student
+  parent
+  school
+}
+
+enum AdminAction {
+  USER_SUSPENDED
+  USER_UNSUSPENDED
+  PASSWORD_RESET
+  ROLE_ASSIGNED
+  COURSES_SYNCED
+  COURSE_PRICING_UPDATED
+  COURSE_CATEGORY_UPDATED
+  COURSE_VISIBILITY_UPDATED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  moodleUserId Int      @unique
+  username     String
+  email        String?
+  firstName    String?
+  lastName     String?
+  role         UserRole @default(student)
+  isSuspended  Boolean  @default(false)
+  lastPasswordResetAt DateTime?
+  passwordResetCount Int @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLoginAt  DateTime?
+  adminActionsPerformed AdminActivityLog[] @relation("AdminActivityActor")
+  adminActionsTargeted  AdminActivityLog[] @relation("AdminActivityTarget")
+
+  @@index([role])
+  @@index([isSuspended])
+}
+
+model CourseCatalog {
+  id             String   @id @default(cuid())
+  moodleCourseId Int      @unique
+  shortname      String
+  fullname       String
+  summary        String?
+  categoryId     Int?
+  categoryName   String?
+  isVisible      Boolean  @default(true)
+  price          Decimal  @default(0) @db.Decimal(10, 2)
+  lastSyncedAt   DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([isVisible])
+}
+
+model AdminActivityLog {
+  id          String      @id @default(cuid())
+  adminUserId String
+  targetUserId String?
+  action      AdminAction
+  details     Json?
+  createdAt   DateTime    @default(now())
+  adminUser   User        @relation("AdminActivityActor", fields: [adminUserId], references: [id], onDelete: Cascade)
+  targetUser  User?       @relation("AdminActivityTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([adminUserId, createdAt])
+  @@index([targetUserId, createdAt])
+  @@index([createdAt])
+}
