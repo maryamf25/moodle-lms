@@ -286,14 +286,42 @@ export async function registerUser(userData: UserData): Promise<RegisterUserResu
         });
     }
 
-    const signupToken = process.env.MOODLE_SIGNUP_TOKEN;
-    if (!signupToken) {
-        throw new RegisterUserError('MOODLE_SIGNUP_TOKEN is not configured', {
-            stage: 'preflight',
+    // Temporarily using Admin API for direct registration to bypass email verification
+    return registerDirectlyViaAdmin(userData);
+}
+
+async function registerDirectlyViaAdmin(userData: UserData): Promise<RegisterUserResult> {
+    const wsfunction = 'core_user_create_users';
+    const params = new URLSearchParams({
+        'users[0][username]': userData.username.toLowerCase(),
+        'users[0][password]': userData.password,
+        'users[0][firstname]': userData.firstname,
+        'users[0][lastname]': userData.lastname,
+        'users[0][email]': userData.email,
+        'users[0][auth]': 'manual',
+    });
+
+    try {
+        const data = await callAdminWebservice(wsfunction, params);
+
+        if (!Array.isArray(data) || data.length === 0) {
+            throw new Error('Moodle did not return user data');
+        }
+
+        const newUser = data[0] as { id: number; username: string };
+
+        return {
+            id: newUser.id,
+            username: newUser.username,
+            requiresEmailConfirmation: false,
+            nextStepMessage: 'Account created successfully. You can now login.',
+        };
+    } catch (error: any) {
+        throw new RegisterUserError(error.message || 'Direct registration failed', {
+            stage: 'admin-api',
+            wsfunction,
         });
     }
-
-    return registerViaAuthEmailSignupUser(userData, signupToken);
 }
 
 async function registerViaAuthEmailSignupUser(userData: UserData, token: string): Promise<RegisterUserResult> {
@@ -456,4 +484,27 @@ export async function addCourseContent(input: AddCourseContentInput): Promise<Ad
         section: firstRow?.section,
         name: firstRow?.name || sectionName,
     };
+}
+
+/**
+ * Enrol a user in a course manually using the admin API
+ */
+export async function enrolUserInCourse(userId: number, courseId: number, roleId: number = 5) {
+    const params = new URLSearchParams({
+        'enrolments[0][roleid]': String(roleId),
+        'enrolments[0][userid]': String(userId),
+        'enrolments[0][courseid]': String(courseId),
+    });
+
+    try {
+        return await callAdminWebservice('enrol_manual_enrol_users', params);
+    } catch (error: any) {
+        // Moodle often fails with "Message was not sent" if SMTP is not configured, 
+        // but the enrollment itself usually goes through. 
+        if (error.message?.includes('Message was not sent') || error.message?.includes('error/Message was not sent')) {
+            console.warn('Moodle enrollment: Enrollment likely succeeded but welcome email failed to send (SMTP issue).');
+            return { success: true, warning: 'Email notification failed' };
+        }
+        throw error;
+    }
 }

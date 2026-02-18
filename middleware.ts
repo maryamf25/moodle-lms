@@ -5,7 +5,10 @@ import { getDashboardPathForRole, normalizeRole, roleFromDashboardPath } from '@
 const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
 
 function authLog(message: string, data?: Record<string, unknown>) {
-    if (!AUTH_DEBUG) return;
+    if (process.env.AUTH_DEBUG !== '1') return;
+    // Skip noisy request logging unless specifically asked
+    if (message === 'request' && !process.env.DEBUG_MIDDLEWARE) return;
+
     if (data) {
         console.log(`[auth][middleware] ${message}`, data);
         return;

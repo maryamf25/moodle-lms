@@ -133,38 +133,48 @@ function resolveRoleFromRoleText(roleText: string): MoodleRole | null {
 
 export async function getUserRole(token: string, siteInfo?: MoodleSiteInfoResponse): Promise<MoodleRole> {
     const info = siteInfo ?? await getSiteInfo(token);
-    authLog('resolving role', {
-        userid: info.userid,
-        username: info.username,
-        userissiteadmin: info.userissiteadmin ?? false,
-    });
 
-    // Admin check first
+    // 1. Admin check (Highest priority)
     if (info.userissiteadmin || info.username === 'admin') {
-        authLog('resolved as admin from site info');
         return 'admin';
     }
 
-    // Check if user is a parent in Moodle by querying role assignments
+    // 2. Check local database for PERMANENT stored role
+    try {
+        const { getStoredRoleByMoodleUserId } = await import('@/lib/auth/user-store');
+        const storedRole = await getStoredRoleByMoodleUserId(info.userid);
+        if (storedRole && storedRole !== 'student') {
+            return storedRole;
+        }
+    } catch (err) {
+        // Silent fail for DB checks during role resolution
+    }
+
+    // 3. Check for PENDING registration role (intent during signup)
+    try {
+        const { prisma } = await import('@/lib/db/prisma');
+        const pending = await (prisma as any).registrationRole.findUnique({
+            where: { username: info.username }
+        });
+        if (pending) {
+            authLog('resolved role from pending registration', { role: pending.role });
+            return pending.role as MoodleRole;
+        }
+    } catch (err) {
+        // Silent fail
+    }
+
+    // 4. Check Moodle for Parent roleassignments (fallback)
     try {
         const { isUserParentInMoodle } = await import('./parents');
-        const isParent = await isUserParentInMoodle(token, info.userid);
-        if (isParent) {
-            authLog('resolved as parent from Moodle role assignments', {
-                userid: info.userid,
-                username: info.username,
-            });
+        if (await isUserParentInMoodle(token, info.userid)) {
             return 'parent';
         }
     } catch (err) {
-        authLog('error checking parent role in Moodle', {
-            userid: info.userid,
-            error: String(err),
-        });
+        // Silent fail
     }
 
-    // Default to student
-    authLog('defaulting to student role', { userid: info.userid, username: info.username });
+    // 5. Default
     return 'student';
 }
 

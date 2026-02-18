@@ -39,9 +39,9 @@ export async function isUserParentInMoodle(
 
         authLog('using parent role ID', { parentRoleId: PARENT_ROLE_ID });
 
-        // Query Moodle to get user role assignments
+        // Query Moodle to get user role assignments (using ADMIN token for permissions)
         const params = new URLSearchParams({
-            wstoken: token,
+            wstoken: process.env.MOODLE_ADMIN_TOKEN!,
             wsfunction: 'core_role_assign_get_user_roles',
             moodlewsrestformat: 'json',
             userid: String(userId),
@@ -130,9 +130,9 @@ export async function getParentChildrenFromMoodle(
             ? Number(process.env.MOODLE_ROLE_PARENT_ID)
             : 9;
 
-        // Get all role assignments for the parent user
+        // Get all role assignments for the parent user (using ADMIN token)
         const params = new URLSearchParams({
-            wstoken: token,
+            wstoken: process.env.MOODLE_ADMIN_TOKEN!,
             wsfunction: 'core_role_assign_get_user_roles',
             moodlewsrestformat: 'json',
             userid: String(parentUserId),

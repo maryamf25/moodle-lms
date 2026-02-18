@@ -131,3 +131,41 @@ model ParentChild {
   @@index([parentId])
   @@index([childId])
 }
+
+model RegistrationRole {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  role      UserRole
+  createdAt DateTime @default(now())
+
+  @@index([username])
+}
+
+model SchoolLicense {
+  id             String   @id @default(cuid())
+  schoolId       Int      // Moodle User ID of the school
+  moodleCourseId Int      // Moodle Course ID the license is for
+  totalSeats     Int
+  usedSeats      Int      @default(0)
+  purchaseDate   DateTime @default(now())
+  expiresAt      DateTime?
+  
+  assignments    LicenseSeatAssignment[]
+
+  @@unique([schoolId, moodleCourseId])
+  @@index([schoolId])
+  @@index([moodleCourseId])
+}
+
+model LicenseSeatAssignment {
+  id              String        @id @default(cuid())
+  licenseId       String
+  studentId       Int           // Moodle User ID of the assigned student
+  assignedAt      DateTime      @default(now())
+  
+  license         SchoolLicense @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  @@unique([licenseId, studentId])
+  @@index([licenseId])
+  @@index([studentId])
+}
