@@ -26,6 +26,7 @@ export async function syncUserFromMoodleSession(input: SyncUserInput) {
     },
     update: {
       username: input.username,
+      role,
       email: input.email ?? undefined,
       firstName: input.firstName ?? undefined,
       lastName: input.lastName ?? undefined,

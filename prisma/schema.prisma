@@ -119,3 +119,15 @@ model Coupon {
   @@index([isActive])
   @@index([expiresAt])
 }
+
+model ParentChild {
+  id        String   @id @default(cuid())
+  parentId  Int      // Moodle User ID of parent
+  childId   Int      // Moodle User ID of student
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([parentId, childId])
+  @@index([parentId])
+  @@index([childId])
+}
