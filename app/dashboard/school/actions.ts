@@ -4,22 +4,20 @@ import { prisma } from '@/lib/db/prisma';
 import { getAppAuthContext } from '@/lib/auth/server-session';
 import { revalidatePath } from 'next/cache';
 
-export async function purchaseLicenseAction(formData: FormData) {
-    const session = await getAppAuthContext();
-    if (!session || session.role !== 'school') {
-        throw new Error('Unauthorized');
-    }
-
-    const moodleCourseId = parseInt(formData.get('courseId') as string);
-    const seatCount = parseInt(formData.get('seats') as string);
-
-    if (isNaN(moodleCourseId) || isNaN(seatCount) || seatCount <= 0) {
-        return { success: false, message: 'Invalid input' };
-    }
-
+export async function purchaseLicenseAction(prevState: any, formData: FormData) {
     try {
-        // In a real app, this would integrate with a payment gateway (Safepay)
-        // Here we simulate a successful purchase
+        if (!formData) return { success: false, message: 'Invalid form data' };
+        const session = await getAppAuthContext();
+        if (!session || session.role !== 'school') {
+            return { success: false, message: 'Unauthorized session' };
+        }
+
+        const moodleCourseId = parseInt(formData.get('courseId') as string);
+        const seatCount = parseInt(formData.get('seats') as string);
+
+        if (isNaN(moodleCourseId) || isNaN(seatCount) || seatCount <= 0) {
+            return { success: false, message: 'Invalid input' };
+        }
 
         if (!(prisma as any).schoolLicense) {
             return { success: false, message: 'System initialization in progress. Please refresh.' };
@@ -44,14 +42,15 @@ export async function purchaseLicenseAction(formData: FormData) {
 
         revalidatePath('/dashboard/school');
         return { success: true, message: `Successfully purchased ${seatCount} seats.` };
-    } catch (error) {
+    } catch (error: any) {
         console.error('Purchase error:', error);
-        return { success: false, message: 'Failed to complete purchase' };
+        return { success: false, message: error.message || 'Failed to complete purchase' };
     }
 }
 
-export async function assignSeatAction(formData: FormData) {
+export async function assignSeatAction(prevState: any, formData: FormData) {
     try {
+        if (!formData) return { success: false, message: 'Invalid form data' };
         const session = await getAppAuthContext();
         if (!session || session.role !== 'school') {
             return { success: false, message: 'Unauthorized session' };
