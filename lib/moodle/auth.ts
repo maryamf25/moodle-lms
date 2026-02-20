@@ -92,6 +92,17 @@ function getAdminTokenOrThrow(): string {
     return adminToken;
 }
 
+function getSignupTokenOrThrow(): string {
+    const signupToken = process.env.MOODLE_SIGNUP_TOKEN;
+    if (!signupToken) {
+        throw new RegisterUserError('MOODLE_SIGNUP_TOKEN is not configured', {
+            stage: 'preflight',
+            wsfunction: 'auth_email_signup_user',
+        });
+    }
+    return signupToken;
+}
+
 function getMoodleError(data: unknown): MoodleErrorResponse | null {
     if (typeof data !== 'object' || data === null) {
         return null;
@@ -286,8 +297,8 @@ export async function registerUser(userData: UserData): Promise<RegisterUserResu
         });
     }
 
-    // Temporarily using Admin API for direct registration to bypass email verification
-    return registerDirectlyViaAdmin(userData);
+    const signupToken = getSignupTokenOrThrow();
+    return registerViaAuthEmailSignupUser(userData, signupToken);
 }
 
 async function registerDirectlyViaAdmin(userData: UserData): Promise<RegisterUserResult> {
