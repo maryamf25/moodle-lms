@@ -1,6 +1,7 @@
 import { UserProfile } from './types';
 import { MoodleRole } from '@/lib/auth/roles';
 import { moodleWebserviceGet } from './client';
+import redis from '@/lib/redis';
 
 const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
 
@@ -156,6 +157,18 @@ export async function getUserRole(token: string, siteInfo?: MoodleSiteInfoRespon
 }
 
 export async function getUserSessionContext(token: string): Promise<{ userid: number; username: string; role: MoodleRole }> {
+    const sessionCacheKey = `moodle-session:${token}`;
+    const sessionCacheTTL = 900; // 15 minutes
+
+    try {
+        const cachedSession = await redis.get(sessionCacheKey);
+        if (cachedSession) {
+            return JSON.parse(cachedSession);
+        }
+    } catch (error) {
+        console.error('Error fetching Moodle session from Redis:', error);
+    }
+
     const siteInfo = await getSiteInfo(token);
     if (siteInfo.exception || !siteInfo.userid) {
         throw new Error(siteInfo.message || 'Unable to fetch user session');
@@ -167,11 +180,20 @@ export async function getUserSessionContext(token: string): Promise<{ userid: nu
         username: siteInfo.username,
         role,
     });
-    return {
+
+    const sessionData = {
         userid: siteInfo.userid,
         username: siteInfo.username,
         role,
     };
+
+    try {
+        await redis.set(sessionCacheKey, JSON.stringify(sessionData), 'EX', sessionCacheTTL);
+    } catch (error) {
+        console.error('Error caching Moodle session in Redis:', error);
+    }
+
+    return sessionData;
 }
 export async function getFullUserProfile(token: string, userid: number) {
     try {

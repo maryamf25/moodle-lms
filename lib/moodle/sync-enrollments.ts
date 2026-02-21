@@ -1,10 +1,12 @@
 import { prisma } from '@/lib/db/prisma';
 import { moodleWebserviceGet } from '@/lib/moodle/client';
 import { mapMoodleUserRow, MoodleEnrolledUserRow } from '@/lib/moodle/mappers';
+import { getCourseCatalog } from '@/lib/course-cache';
 
 interface MoodleCourseEnrolledUser extends MoodleEnrolledUserRow {
   roles?: Array<{ shortname?: string }>;
 }
+
 
 export interface SyncEnrollmentsResult {
   syncedCount: number;
@@ -27,13 +29,7 @@ function toDateFromUnix(timestamp?: number): Date | null {
 
 export async function syncEnrollmentsFromMoodle(): Promise<SyncEnrollmentsResult> {
   const adminToken = getAdminTokenOrThrow();
-  const courses = await prisma.courseCatalog.findMany({
-    select: {
-      id: true,
-      moodleCourseId: true,
-    },
-    orderBy: { moodleCourseId: 'asc' },
-  });
+  const courses = await getCourseCatalog();
 
   let syncedCount = 0;
   let newCount = 0;

@@ -1,7 +1,10 @@
-
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getDashboardPathForRole, normalizeRole, roleFromDashboardPath } from '@/lib/auth/roles';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
+import redis from '@/lib/redis';
+
 const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
 
 function authLog(message: string, data?: Record<string, unknown>) {
@@ -16,13 +19,43 @@ function authLog(message: string, data?: Record<string, unknown>) {
     console.log(`[auth][middleware] ${message}`);
 }
 
-export function middleware(request: NextRequest) {
+const ratelimit = new Ratelimit({
+  redis: redis,
+  limiter: Ratelimit.slidingWindow(10, '10 s'),
+  analytics: true,
+  /**
+   * Optional prefix for the keys used in redis. This is useful if you want to share a redis
+   * instance with other applications and want to avoid key collisions. The default prefix is
+   * "@upstash/ratelimit"
+   */
+  prefix: '@upstash/ratelimit/moodle-lms',
+});
+
+
+export async function middleware(request: NextRequest) {
+    const { pathname } = request.nextUrl;
+
+    // Rate limit API requests
+    if (pathname.startsWith('/api')) {
+        const ip = request.ip ?? '127.0.0.1';
+        const { success, pending, limit, reset, remaining } = await ratelimit.limit(ip);
+
+        if (!success) {
+            return new NextResponse('Too many requests', {
+                status: 429,
+                headers: {
+                    'X-RateLimit-Limit': limit.toString(),
+                    'X-RateLimit-Remaining': remaining.toString(),
+                    'X-RateLimit-Reset': reset.toString(),
+                },
+            });
+        }
+    }
+
     const token = request.cookies.get('moodle_token')?.value;
     const roleCookie = request.cookies.get('moodle_role')?.value;
     const role = roleCookie ? normalizeRole(roleCookie) : null;
-    const { pathname } = request.nextUrl;
-
-    // Paths that require authentication
+    
     // Paths that require authentication
     // We want /course/[id] to be public, but /course/[id]/learn to be protected
     // Better logic for course/learn
@@ -30,7 +63,7 @@ export function middleware(request: NextRequest) {
         pathname.startsWith('/dashboard') ||
         pathname.startsWith('/profile') ||
         pathname.includes('/learn'); // This covers /course/[id]/learn
-
+    
     // Paths that are for guests only (like login/register)
     const authPaths = ['/login', '/register'];
     const isAuthPath = authPaths.some((path) => pathname.startsWith(path));
@@ -95,12 +128,11 @@ export const config = {
     matcher: [
         /*
          * Match all request paths except for the ones starting with:
-         * - api (API routes)
          * - _next/static (static files)
          * - _next/image (image optimization files)
          * - favicon.ico (favicon file)
          * - public folder content
          */
-        '/((?!api|_next/static|_next/image|favicon.ico|public).*)',
+        '/((?!_next/static|_next/image|favicon.ico|public).*)',
     ],
 };

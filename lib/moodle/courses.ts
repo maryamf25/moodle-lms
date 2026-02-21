@@ -1,12 +1,13 @@
 import { EnrolledCourse, CourseContent } from './types';
-import { prisma } from '@/lib/db/prisma';
 import { moodleWebserviceGet, moodleWebservicePost } from './client';
 import { extractCoursePrice } from './mappers';
+import { getCourseById } from '@/lib/course-cache';
 
 interface MoodleCustomField {
   shortname?: string;
   value?: string;
 }
+
 
 interface MoodleCoursePriceRow {
   id: number;
@@ -53,10 +54,7 @@ export async function enrolUser(userId: number, courseId: number) {
 }
 
 export async function getCoursePriceInfo(courseId: number) {
-  const localCourse = await prisma.courseCatalog.findUnique({
-    where: { moodleCourseId: courseId },
-    select: { price: true },
-  });
+  const localCourse = await getCourseById(courseId);
 
   if (localCourse) {
     return {

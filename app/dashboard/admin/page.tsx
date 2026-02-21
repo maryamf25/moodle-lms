@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/prisma';
 import AdminManagementPanel from '@/components/features/admin/AdminManagementPanel';
 import CourseManagementPanel from '@/components/features/admin/CourseManagementPanel';
 import { getMoodleCategoriesAdmin } from '@/lib/moodle/admin-courses';
+import { getCourseCatalog } from '@/lib/course-cache';
 
 export default async function AdminDashboardPage() {
   await requireAppAuth('admin');
@@ -38,19 +39,7 @@ export default async function AdminDashboardPage() {
         },
       },
     }),
-    prisma.courseCatalog.findMany({
-      orderBy: [{ fullname: 'asc' }],
-      select: {
-        moodleCourseId: true,
-        shortname: true,
-        fullname: true,
-        categoryId: true,
-        categoryName: true,
-        isVisible: true,
-        price: true,
-        lastSyncedAt: true,
-      },
-    }),
+    getCourseCatalog(),
     getMoodleCategoriesAdmin().catch(() => []),
   ]);
 

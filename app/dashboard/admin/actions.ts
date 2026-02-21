@@ -16,11 +16,13 @@ import {
   resetMoodleUserPassword,
   setMoodleUserSuspended,
 } from '@/lib/moodle/admin-management';
+import { getCourseById } from '@/lib/course-cache';
 
 interface AdminActionResult {
   ok: boolean;
   message: string;
 }
+
 
 interface SuspendUserInput {
   moodleUserId: number;
@@ -261,9 +263,7 @@ export async function setCoursePriceAction(input: SetCoursePriceInput): Promise<
     normalizedPrice,
   });
 
-  const existing = await prisma.courseCatalog.findUnique({
-    where: { moodleCourseId: input.moodleCourseId },
-  });
+  const existing = await getCourseById(input.moodleCourseId);
   if (!existing) {
     return { ok: false, message: 'Course not found in local catalog. Please sync courses first.' };
   }
@@ -286,10 +286,7 @@ export async function setCoursePriceAction(input: SetCoursePriceInput): Promise<
     }),
   ]);
 
-  const verify = await prisma.courseCatalog.findUnique({
-    where: { moodleCourseId: input.moodleCourseId },
-    select: { moodleCourseId: true, fullname: true, price: true },
-  });
+  const verify = await getCourseById(input.moodleCourseId);
   console.log('[admin][pricing] setCoursePriceAction stored', {
     moodleCourseId: verify?.moodleCourseId,
     fullname: verify?.fullname,
@@ -309,9 +306,7 @@ export async function updateCourseCategoryAction(input: UpdateCourseCategoryInpu
   }
 
   const actingAdmin = await ensureActingAdminUser(auth.moodleUserId, auth.username);
-  const existing = await prisma.courseCatalog.findUnique({
-    where: { moodleCourseId: input.moodleCourseId },
-  });
+  const existing = await getCourseById(input.moodleCourseId);
   if (!existing) {
     return { ok: false, message: 'Course not found in local catalog. Please sync courses first.' };
   }
@@ -364,9 +359,7 @@ export async function updateCourseVisibilityAction(input: UpdateCourseVisibility
   assertValidMoodleCourseId(input.moodleCourseId);
 
   const actingAdmin = await ensureActingAdminUser(auth.moodleUserId, auth.username);
-  const existing = await prisma.courseCatalog.findUnique({
-    where: { moodleCourseId: input.moodleCourseId },
-  });
+  const existing = await getCourseById(input.moodleCourseId);
   if (!existing) {
     return { ok: false, message: 'Course not found in local catalog. Please sync courses first.' };
   }

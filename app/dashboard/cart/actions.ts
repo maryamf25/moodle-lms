@@ -3,12 +3,14 @@
 import { prisma } from '@/lib/db/prisma';
 import { requireAppAuth } from '@/lib/auth/server-session';
 import { revalidatePath } from 'next/cache';
+import { getCourseById } from '@/lib/course-cache';
 
 export interface CartActionResult {
   ok: boolean;
   message: string;
   data?: unknown;
 }
+
 
 interface MoodleCustomField {
   shortname: string;
@@ -78,9 +80,7 @@ export async function addToCartAction(courseId: string): Promise<CartActionResul
     const moodleCourseId = parseInt(courseId);
 
     // Verify course exists or fetch from Moodle
-    let course = await prisma.courseCatalog.findUnique({
-      where: { moodleCourseId },
-    });
+    let course = await getCourseById(moodleCourseId);
 
     // If not found locally, fetch from Moodle and create it
     if (!course) {
@@ -169,9 +169,7 @@ export async function removeFromCartAction(courseId: string): Promise<CartAction
     }
 
     // Look up by moodleCourseId to get the UUID
-    const course = await prisma.courseCatalog.findUnique({
-      where: { moodleCourseId: parseInt(courseId) },
-    });
+    const course = await getCourseById(parseInt(courseId));
 
     if (!course) {
       return { ok: false, message: 'Course not found' };

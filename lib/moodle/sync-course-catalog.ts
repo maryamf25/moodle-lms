@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/db/prisma';
 import { getMoodleCategoriesAdmin, getMoodleCoursesAdmin } from '@/lib/moodle/admin-courses';
+import redis from '@/lib/redis';
 
 interface SyncCourseCatalogOptions {
   actingAdminUserId?: string;
 }
+
 
 export interface SyncCourseCatalogResult {
   syncedCount: number;
@@ -88,6 +90,16 @@ export async function syncCourseCatalogFromMoodle(
       });
     }
   });
+
+  // Cache the full catalog in Redis
+  try {
+    const allCourses = await prisma.courseCatalog.findMany();
+    if (allCourses.length > 0) {
+      await redis.set('course-catalog', JSON.stringify(allCourses), 'EX', 3600); // 1 hour expiration
+    }
+  } catch (error) {
+    console.error('Failed to cache course catalog in Redis:', error);
+  }
 
   return {
     syncedCount: moodleCourses.length,
