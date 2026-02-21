@@ -1,22 +1,54 @@
-import Redis from 'ioredis';
+type RedisLike = {
+  get: (key: string) => Promise<string | null>;
+  set: (...args: any[]) => Promise<any>;
+  del: (...keys: string[]) => Promise<number>;
+};
 
-// This module exports a singleton Redis client instance.
-// It reads the Redis connection URL from the REDIS_URL environment variable.
-//
-// Make sure to set the REDIS_URL environment variable in your .env file.
-// Example: REDIS_URL="redis://localhost:6379"
+class MemoryRedisClient implements RedisLike {
+  private store = new Map<string, { value: string; expiresAt: number | null }>();
 
-let redis: Redis;
+  async get(key: string): Promise<string | null> {
+    const item = this.store.get(key);
+    if (!item) return null;
 
-if (process.env.NODE_ENV === 'production') {
-  redis = new Redis(process.env.REDIS_URL as string);
-} else {
-  // In development, use a global variable to preserve the connection
-  // across hot reloads.
-  if (!global.redis) {
-    global.redis = new Redis(process.env.REDIS_URL as string);
+    if (item.expiresAt !== null && item.expiresAt <= Date.now()) {
+      this.store.delete(key);
+      return null;
+    }
+
+    return item.value;
   }
-  redis = global.redis;
+
+  async set(...args: any[]): Promise<'OK'> {
+    const [key, value, mode, ttlRaw] = args;
+    let expiresAt: number | null = null;
+
+    if (mode === 'EX' && Number.isFinite(Number(ttlRaw))) {
+      expiresAt = Date.now() + Number(ttlRaw) * 1000;
+    }
+
+    this.store.set(String(key), { value: String(value), expiresAt });
+    return 'OK';
+  }
+
+  async del(...keys: string[]): Promise<number> {
+    let removed = 0;
+    for (const key of keys) {
+      if (this.store.delete(key)) removed += 1;
+    }
+    return removed;
+  }
 }
+
+declare global {
+  // eslint-disable-next-line no-var
+  var redisClientSingleton: RedisLike | undefined;
+}
+
+if (!global.redisClientSingleton) {
+  global.redisClientSingleton = new MemoryRedisClient();
+}
+
+const redis: RedisLike = global.redisClientSingleton;
 
 export default redis;

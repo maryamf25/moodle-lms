@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getDashboardPathForRole, normalizeRole, roleFromDashboardPath } from '@/lib/auth/roles';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
-import redis from '@/lib/redis';
 
 const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
 
@@ -19,17 +16,25 @@ function authLog(message: string, data?: Record<string, unknown>) {
     console.log(`[auth][middleware] ${message}`);
 }
 
-const ratelimit = new Ratelimit({
-  redis: redis,
-  limiter: Ratelimit.slidingWindow(10, '10 s'),
-  analytics: true,
-  /**
-   * Optional prefix for the keys used in redis. This is useful if you want to share a redis
-   * instance with other applications and want to avoid key collisions. The default prefix is
-   * "@upstash/ratelimit"
-   */
-  prefix: '@upstash/ratelimit/moodle-lms',
-});
+const RATE_WINDOW_MS = 10_000;
+const RATE_LIMIT = 10;
+const rateStore = new Map<string, number[]>();
+
+function isRateLimited(ip: string): { limited: boolean; resetAt: number; remaining: number } {
+    const now = Date.now();
+    const current = rateStore.get(ip) || [];
+    const recent = current.filter((timestamp) => now - timestamp < RATE_WINDOW_MS);
+
+    if (recent.length >= RATE_LIMIT) {
+        const resetAt = recent[0] + RATE_WINDOW_MS;
+        rateStore.set(ip, recent);
+        return { limited: true, resetAt, remaining: 0 };
+    }
+
+    recent.push(now);
+    rateStore.set(ip, recent);
+    return { limited: false, resetAt: now + RATE_WINDOW_MS, remaining: Math.max(RATE_LIMIT - recent.length, 0) };
+}
 
 
 export async function middleware(request: NextRequest) {
@@ -38,15 +43,15 @@ export async function middleware(request: NextRequest) {
     // Rate limit API requests
     if (pathname.startsWith('/api')) {
         const ip = request.ip ?? '127.0.0.1';
-        const { success, pending, limit, reset, remaining } = await ratelimit.limit(ip);
+        const rate = isRateLimited(ip);
 
-        if (!success) {
+        if (rate.limited) {
             return new NextResponse('Too many requests', {
                 status: 429,
                 headers: {
-                    'X-RateLimit-Limit': limit.toString(),
-                    'X-RateLimit-Remaining': remaining.toString(),
-                    'X-RateLimit-Reset': reset.toString(),
+                    'X-RateLimit-Limit': RATE_LIMIT.toString(),
+                    'X-RateLimit-Remaining': '0',
+                    'X-RateLimit-Reset': Math.ceil(rate.resetAt / 1000).toString(),
                 },
             });
         }
