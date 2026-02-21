@@ -169,3 +169,93 @@ model LicenseSeatAssignment {
   @@index([licenseId])
   @@index([studentId])
 }
+
+enum FormType {
+  CONTACT
+  TEACHER_APPLICATION
+  CUSTOM
+}
+
+enum FieldType {
+  TEXT
+  EMAIL
+  TEXTAREA
+  PHONE
+  SELECT
+  CHECKBOX
+  RADIO
+  FILE
+  DATE
+  NUMBER
+}
+
+model Form {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  type        FormType
+  isActive    Boolean  @default(true)
+  createdBy   String   // User ID of form creator
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  fields      FormField[]
+  submissions FormSubmission[]
+
+  @@index([type])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model FormField {
+  id          String   @id @default(cuid())
+  formId      String
+  fieldType   FieldType
+  label       String
+  placeholder String?
+  isRequired  Boolean  @default(false)
+  order       Int
+  options     String?  // JSON array for select/radio options
+  validation  String?  // JSON validation rules
+  
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@index([order])
+}
+
+model FormSubmission {
+  id          String   @id @default(cuid())
+  formId      String
+  submitBy    String?  // User ID if logged in, email if guest
+  email       String?
+  data        Json     // Form field values
+  status      String   @default("submitted") // submitted, reviewing, approved, rejected
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  files       SubmissionFile[]
+
+  @@index([formId])
+  @@index([submitBy])
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SubmissionFile {
+  id            String   @id @default(cuid())
+  submissionId  String
+  originalName  String
+  storageName   String
+  mimeType      String
+  size          Int      // File size in bytes
+  uploadedAt    DateTime @default(now())
+  
+  submission    FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([uploadedAt])
+}

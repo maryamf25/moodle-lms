@@ -40,6 +40,14 @@ export default function DashboardSidebar({ userProfile, token }: DashboardSideba
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                 ),
+            }, {
+                name: "Forms Management",
+                href: "/dashboard/admin/forms",
+                icon: (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                ),
             }]
             : []),
         ...(userProfile?.role === "school"
