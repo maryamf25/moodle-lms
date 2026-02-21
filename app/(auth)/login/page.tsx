@@ -72,6 +72,7 @@ function LoginForm() {
                     <input
                         type="text"
                         required
+                        suppressHydrationWarning
                         className="w-full border p-2 rounded text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         value={formData.username}
                         onChange={(e) => setFormData({ ...formData, username: e.target.value })}
@@ -83,6 +84,7 @@ function LoginForm() {
                     <input
                         type="password"
                         required
+                        suppressHydrationWarning
                         className="w-full border p-2 rounded text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         value={formData.password}
                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}

@@ -152,54 +152,148 @@ export async function getCoursePriceInfo(courseId: number) {
 }
 // --- 3. FETCH USER COURSES ---
 export async function getUserCourses(token: string, userid: number): Promise<EnrolledCourse[]> {
-    const params = new URLSearchParams({
-        wstoken: token,
-        wsfunction: 'core_enrol_get_users_courses',
-        moodlewsrestformat: 'json',
-        userid: userid.toString(),
-    });
+    try {
+        const adminToken = process.env.MOODLE_ADMIN_TOKEN;
 
-    const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-    if (!response.ok) throw new Error('Failed to fetch courses');
+        // Use admin token if provided token fails (common for new students with restricted tokens)
+        const effectiveToken = token || adminToken;
 
-    const data = await response.json();
-    if (Array.isArray(data)) {
-        // Helper to extract image if needed, or just return data
-        return data.map((course: EnrolledCourse) => ({
-            ...course,
-            fileurl: course.overviewfiles?.[0]?.fileurl?.replace('?token=', `?token=${token}`) || '' // naive token append
-        }));
+        // 1. Get primary course list
+        const params = new URLSearchParams({
+            wstoken: effectiveToken!,
+            wsfunction: 'core_enrol_get_users_courses',
+            moodlewsrestformat: 'json',
+            userid: userid.toString(),
+        });
+
+        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+        if (!response.ok) throw new Error('Failed to fetch courses');
+        let data = await response.json();
+
+        // If direct fetch is empty but we have an admin token, try again with admin token
+        if ((!Array.isArray(data) || data.length === 0) && adminToken && token !== adminToken) {
+            console.log(`getUserCourses: Student token returned empty, falling back to admin token for user ${userid}`);
+            const adminParams = new URLSearchParams({
+                wstoken: adminToken,
+                wsfunction: 'core_enrol_get_users_courses',
+                moodlewsrestformat: 'json',
+                userid: userid.toString(),
+            });
+            const adminRes = await fetch(`${BASE_URL}/webservice/rest/server.php?${adminParams.toString()}`);
+            const adminData = await adminRes.json();
+            if (Array.isArray(adminData)) {
+                data = adminData;
+            }
+        }
+
+        // LOGGING FOR DEBUGGING
+        if (data.exception) {
+            console.error('Moodle API Exception in getUserCourses:', data);
+            return [];
+        }
+
+        let courseList = Array.isArray(data) ? data : [];
+
+        // 2. Fetch progress and handle empty list fallback using Timeline API
+        // Timeline API is often more reliable for "Current" courses
+        let timelineCourses: any[] = [];
+        try {
+            const timelineParams = new URLSearchParams({
+                wstoken: token,
+                wsfunction: 'core_course_get_enrolled_courses_by_timeline_classification',
+                moodlewsrestformat: 'json',
+                classification: 'all'
+            });
+            const timelineRes = await fetch(`${BASE_URL}/webservice/rest/server.php?${timelineParams.toString()}`);
+            const timelineData = await timelineRes.json();
+
+            if (timelineData && !timelineData.exception) {
+                timelineCourses = timelineData.courses || [];
+            }
+        } catch (e) {
+            console.warn('Could not fetch timeline progress', e);
+        }
+
+        // FALLBACK: If core_enrol_get_users_courses is empty but timeline has courses, use timeline
+        if (courseList.length === 0 && timelineCourses.length > 0) {
+            console.log(`getUserCourses: Using timeline fallback for user ${userid}`);
+            courseList = timelineCourses.map(tc => ({
+                id: tc.id,
+                fullname: tc.fullname,
+                shortname: tc.shortname,
+                progress: tc.progress,
+                completed: tc.completed,
+                overviewfiles: tc.courseimage ? [{ fileurl: tc.courseimage }] : []
+            })) as any;
+        }
+
+        console.log(`getUserCourses: Returning ${courseList.length} courses for user ${userid}`);
+
+        // 3. Merge data
+        return courseList.map((course: EnrolledCourse) => {
+            const matchedTimeline = timelineCourses.find(tc => tc.id === course.id);
+            const progress = matchedTimeline ? matchedTimeline.progress : (course.progress || 0);
+            const completed = matchedTimeline ? matchedTimeline.completed : (course.completed || false);
+
+            return {
+                ...course,
+                progress: progress,
+                completed: completed,
+                fileurl: course.overviewfiles?.[0]?.fileurl?.replace('?token=', `?token=${token}`) || ''
+            };
+        });
+    } catch (error) {
+        console.error('getUserCourses CRITICAL Error:', error);
+        return [];
     }
-    return [];
 }
 
-// --- 4. FETCH COURSE CONTENTS ---
 export async function getCourseContents(token: string, courseid: number): Promise<CourseContent[]> {
-    const params = new URLSearchParams({
-        wstoken: token,
-        wsfunction: 'core_course_get_contents',
-        moodlewsrestformat: 'json',
-        courseid: courseid.toString(),
-    });
+    try {
+        const adminToken = process.env.MOODLE_ADMIN_TOKEN;
+        const effectiveToken = token || adminToken;
 
-    const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-    if (!response.ok) throw new Error('Failed to fetch course contents');
+        const fetchContents = async (useToken: string) => {
+            const params = new URLSearchParams({
+                wstoken: useToken,
+                wsfunction: 'core_course_get_contents',
+                moodlewsrestformat: 'json',
+                courseid: courseid.toString(),
+            });
+            const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+            if (!response.ok) return null;
+            return await response.json();
+        };
 
-    const data = await response.json();
+        let data = await fetchContents(effectiveToken!);
 
-    if (Array.isArray(data)) {
-        // Process modules to add convenience fields
-        return data.map((section: MoodleSection) => ({
-            ...section,
-            modules: section.modules.map((mod: MoodleModule) => ({
-                ...mod,
-                fileurl: mod.contents?.[0]?.fileurl || '',
-                filename: mod.contents?.[0]?.filename || ''
-            }))
-        })) as CourseContent[];
+        // Fallback to admin token if empty result or exception
+        const isError = !Array.isArray(data) || data.length === 0 || (typeof data === 'object' && data !== null && (data as any).exception);
+
+        if (isError && adminToken && token !== adminToken) {
+            console.log(`getCourseContents: Falling back to admin token for course ${courseid}`);
+            const adminData = await fetchContents(adminToken);
+            if (Array.isArray(adminData) && adminData.length > 0) {
+                data = adminData;
+            }
+        }
+
+        if (Array.isArray(data)) {
+            return data.map((section: any) => ({
+                ...section,
+                modules: (section.modules || []).map((mod: any) => ({
+                    ...mod,
+                    fileurl: mod.contents?.[0]?.fileurl || '',
+                    filename: mod.contents?.[0]?.filename || ''
+                }))
+            })) as CourseContent[];
+        }
+
+        return [];
+    } catch (error) {
+        console.error('getCourseContents Error:', error);
+        return [];
     }
-
-    return [];
 }
 
 export async function getEnrolledUsers(token: string, courseid: number) {

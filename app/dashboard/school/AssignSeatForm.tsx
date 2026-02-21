@@ -5,9 +5,7 @@ import { assignSeatAction } from './actions';
 
 export default function AssignSeatForm({ licenseId }: { licenseId: string }) {
     const [state, formAction, isPending] = useActionState(
-        async (prevState: any, formData: FormData) => {
-            return await assignSeatAction(formData);
-        },
+        assignSeatAction,
         null
     );
 

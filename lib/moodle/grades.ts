@@ -43,11 +43,17 @@ export async function getStudentGrades(childId: number): Promise<CourseGrade[]> 
                 // Extract final grade (usually at the end of the usergrades array)
                 const finalGradeItem = gradeData?.usergrades?.[0]?.gradeitems?.find((item: any) => item.itemtype === 'course');
 
+                // Clean up percentage (Moodle might return " - " or "85 %")
+                const rawPercentage = finalGradeItem?.percentageformatted || '';
+                const cleanPercentage = parseFloat(rawPercentage.replace(/[^\d.]/g, ''));
+
                 return {
                     courseId: course.id,
                     courseName: course.fullname,
-                    grade: finalGradeItem?.gradeformatted || 'N/A',
-                    percentage: parseFloat(finalGradeItem?.percentageformatted || '0'),
+                    grade: (finalGradeItem?.gradeformatted && finalGradeItem.gradeformatted !== '-')
+                        ? finalGradeItem.gradeformatted
+                        : 'N/A',
+                    percentage: isNaN(cleanPercentage) ? 0 : cleanPercentage,
                     progress: course.progress || 0
                 };
             } catch (err) {

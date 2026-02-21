@@ -95,11 +95,27 @@ export async function assignSeatAction(prevState: any, formData: FormData) {
             return { success: false, message: `Could not verify student email: ${err.message}` };
         }
 
+        let student: any;
         if (!Array.isArray(moodleUsers) || moodleUsers.length === 0) {
-            return { success: false, message: `No registered student found with email: ${studentEmail}` };
+            // AUTO-REGISTRATION for Single Assignment
+            try {
+                const { registerDirectlyViaAdmin } = await import('@/lib/moodle/auth');
+                const usernameHandle = studentEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+                const newUser = await (registerDirectlyViaAdmin as any)({
+                    username: usernameHandle,
+                    password: '', // Moodle will generate this
+                    firstname: studentEmail.split('@')[0],
+                    lastname: 'Student',
+                    email: studentEmail
+                });
+                student = { id: newUser.id, email: studentEmail, fullname: `${studentEmail.split('@')[0]} Student` };
+                console.log(`Seat Assignment: Auto-registered new student ${studentEmail}`);
+            } catch (regErr: any) {
+                return { success: false, message: `Student not found and auto-creation failed: ${regErr.message}` };
+            }
+        } else {
+            student = moodleUsers[0];
         }
-
-        const student = moodleUsers[0];
 
         // 2.5 Check if already enrolled in Moodle (SRS logic)
         const { getUserCourses } = await import('@/lib/moodle/courses');
@@ -165,5 +181,111 @@ export async function assignSeatAction(prevState: any, formData: FormData) {
     } catch (error: any) {
         console.error('Seat assignment CRITICAL error:', error);
         return { success: false, message: `System error: ${error.message || 'Please try again later'}` };
+    }
+}
+
+export async function bulkAssignSeatsAction(licenseId: string, emails: string[]) {
+    try {
+        const session = await getAppAuthContext();
+        if (!session || session.role !== 'school') return { success: false, message: 'Unauthorized' };
+
+        if (!licenseId || !emails || emails.length === 0) {
+            return { success: false, message: 'Invalid data' };
+        }
+
+        const prismaAny = prisma as any;
+        const license = await prismaAny.schoolLicense.findUnique({ where: { id: licenseId } });
+        if (!license || license.schoolId !== session.moodleUserId) {
+            return { success: false, message: 'License not found' };
+        }
+
+        const availableSeats = license.totalSeats - license.usedSeats;
+        if (emails.length > availableSeats) {
+            return { success: false, message: `Insufficient seats. You have ${availableSeats} seats left but tried to assign ${emails.length}.` };
+        }
+
+        const { getUserByEmail } = await import('@/lib/moodle/user');
+        const { enrolUserInCourse } = await import('@/lib/moodle/auth');
+        const { getUserCourses } = await import('@/lib/moodle/courses');
+        const results = { success: 0, failed: 0, errors: [] as string[] };
+
+        for (const rawEmail of emails) {
+            const email = rawEmail.trim().toLowerCase();
+            if (!email) continue;
+
+            try {
+                // Check Moodle User
+                let mUsers = await getUserByEmail(email);
+                let student: any;
+
+                if (!Array.isArray(mUsers) || mUsers.length === 0) {
+                    // AUTO-REGISTRATION: User doesn't exist, let's create them
+                    try {
+                        const { registerDirectlyViaAdmin } = await import('@/lib/moodle/auth');
+                        // Use email as username for predictable login
+                        const username = email.toLowerCase();
+                        const newUser = await (registerDirectlyViaAdmin as any)({
+                            username: username,
+                            password: 'Welcome@123', // Professional default password
+                            firstname: email.split('@')[0], // Fallback firstname
+                            lastname: 'Student',
+                            email: email
+                        });
+                        student = { id: newUser.id, email: email, fullname: `${email.split('@')[0]} Student` };
+                    } catch (regErr: any) {
+                        results.failed++;
+                        results.errors.push(`${email}: Creation failed: ${regErr.message}`);
+                        continue;
+                    }
+                } else {
+                    student = mUsers[0];
+                }
+
+                // Check Assignment in DB
+                const existing = await prismaAny.licenseSeatAssignment.findUnique({
+                    where: { licenseId_studentId: { licenseId, studentId: student.id } }
+                });
+                if (existing) {
+                    results.failed++;
+                    results.errors.push(`${email}: Already assigned`);
+                    continue;
+                }
+
+                // Check Moodle Enrollment
+                const adminToken = process.env.MOODLE_ADMIN_TOKEN;
+                if (adminToken) {
+                    const sCourses = await getUserCourses(adminToken, student.id);
+                    if (sCourses.some((c: any) => c.id === license.moodleCourseId)) {
+                        results.failed++;
+                        results.errors.push(`${email}: Already enrolled in course`);
+                        continue;
+                    }
+                }
+
+                // Enroll and Record
+                await enrolUserInCourse(student.id, license.moodleCourseId);
+                await prismaAny.licenseSeatAssignment.create({
+                    data: { licenseId, studentId: student.id }
+                });
+                await prismaAny.schoolLicense.update({
+                    where: { id: licenseId },
+                    data: { usedSeats: { increment: 1 } }
+                });
+
+                results.success++;
+            } catch (err: any) {
+                results.failed++;
+                results.errors.push(`${email}: ${err.message || 'System error'}`);
+            }
+        }
+
+        revalidatePath('/dashboard/school');
+        return {
+            success: true,
+            message: `Processed ${emails.length} emails.`,
+            summary: results
+        };
+    } catch (error: any) {
+        return { success: false, message: error.message };
     }
 }

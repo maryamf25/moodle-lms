@@ -301,15 +301,19 @@ export async function registerUser(userData: UserData): Promise<RegisterUserResu
     return registerViaAuthEmailSignupUser(userData, signupToken);
 }
 
-async function registerDirectlyViaAdmin(userData: UserData): Promise<RegisterUserResult> {
+export async function registerDirectlyViaAdmin(userData: UserData): Promise<RegisterUserResult> {
     const wsfunction = 'core_user_create_users';
     const params = new URLSearchParams({
         'users[0][username]': userData.username.toLowerCase(),
-        'users[0][password]': userData.password,
+        // Moodle will generate and email a password if createpassword is 1
+        'users[0][createpassword]': '1',
         'users[0][firstname]': userData.firstname,
         'users[0][lastname]': userData.lastname,
         'users[0][email]': userData.email,
         'users[0][auth]': 'manual',
+        // Still force change for extra security after they get the emailed one
+        'users[0][preferences][0][type]': 'auth_forcepasswordchange',
+        'users[0][preferences][0][value]': '1',
     });
 
     try {

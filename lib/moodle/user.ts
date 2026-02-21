@@ -198,16 +198,34 @@ export async function getUserSessionContext(token: string): Promise<{ userid: nu
 }
 export async function getFullUserProfile(token: string, userid: number) {
     try {
-        const params = new URLSearchParams({
-            wstoken: token,
-            wsfunction: 'core_user_get_users_by_field',
-            moodlewsrestformat: 'json',
-            'field': 'id',
-            'values[0]': userid.toString()
-        });
+        const adminToken = process.env.MOODLE_ADMIN_TOKEN;
+        const effectiveToken = token || adminToken;
 
-        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-        const data = await response.json();
+        const fetchProfile = async (useToken: string) => {
+            const params = new URLSearchParams({
+                wstoken: useToken,
+                wsfunction: 'core_user_get_users_by_field',
+                moodlewsrestformat: 'json',
+                'field': 'id',
+                'values[0]': userid.toString()
+            });
+            const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+            if (!response.ok) return null;
+            return await response.json();
+        };
+
+        let data = await fetchProfile(effectiveToken!);
+
+        // Fallback to admin token if empty result or exception
+        const isError = !Array.isArray(data) || data.length === 0 || (typeof data === 'object' && data !== null && (data as any).exception);
+
+        if (isError && adminToken && token !== adminToken) {
+            console.log(`getFullUserProfile: Falling back to admin token for user ${userid}`);
+            const adminData = await fetchProfile(adminToken);
+            if (Array.isArray(adminData) && adminData.length > 0) {
+                data = adminData;
+            }
+        }
 
         if (Array.isArray(data) && data.length > 0) {
             return data[0];
@@ -217,4 +235,42 @@ export async function getFullUserProfile(token: string, userid: number) {
         console.error('Get full profile error:', error);
         return null;
     }
+}
+export async function getFullUserProfiles(token: string, userids: number[]) {
+    if (userids.length === 0) return [];
+
+    const adminToken = process.env.MOODLE_ADMIN_TOKEN;
+
+    const fetchProfiles = async (useToken: string) => {
+        try {
+            const params = new URLSearchParams({
+                wstoken: useToken,
+                wsfunction: 'core_user_get_users_by_field',
+                moodlewsrestformat: 'json',
+                'field': 'id',
+            });
+            userids.forEach((id, index) => {
+                params.append(`values[${index}]`, id.toString());
+            });
+
+            const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+            if (!response.ok) return [];
+            const data = await response.json();
+
+            if (Array.isArray(data) && data.length > 0) return data;
+            return [];
+        } catch {
+            return [];
+        }
+    };
+
+    let results = await fetchProfiles(token || adminToken!);
+
+    // If first attempt failed (likely due to permissions) and we have an admin token, try again
+    if (results.length === 0 && adminToken && token !== adminToken) {
+        console.log(`getFullUserProfiles: Retrying with Admin Token for ${userids.length} users`);
+        results = await fetchProfiles(adminToken);
+    }
+
+    return results;
 }

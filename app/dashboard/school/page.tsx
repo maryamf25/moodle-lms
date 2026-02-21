@@ -2,10 +2,16 @@ import { requireAppAuth, getAppAuthContext } from '@/lib/auth/server-session';
 import { prisma } from '@/lib/db/prisma';
 import PurchaseForm from './PurchaseForm';
 import AssignSeatForm from './AssignSeatForm';
+import BulkAssignForm from './BulkAssignForm';
+import StudentProgressList from './StudentProgressList';
+import { getUserProfile } from '@/lib/moodle/user';
+import Link from 'next/link';
 
 export default async function SchoolDashboardPage() {
     await requireAppAuth('school');
     const session = await getAppAuthContext();
+    const profile = await getUserProfile(session?.token!);
+    const schoolName = profile?.fullname || 'School Admin';
 
     // Safe models access to prevent runtime crashes during HMR/Prisma generation
     const prismaAny = prisma as any;
@@ -60,6 +66,20 @@ export default async function SchoolDashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Main Content: Licenses & Assignments */}
                 <div className="lg:col-span-2 space-y-12">
+                    {/* REDIRECT TO ADVANCED ANALYTICS */}
+                    <div className="bg-indigo-50 border border-indigo-100 rounded-[2rem] p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div>
+                            <h3 className="text-lg font-extrabold text-indigo-900">Advanced Analytics Available</h3>
+                            <p className="text-indigo-600/80 text-sm font-medium">View detailed performance charts and download institution-wide reports.</p>
+                        </div>
+                        <Link
+                            href="/dashboard/school/analytics"
+                            className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all text-sm whitespace-nowrap"
+                        >
+                            View Analytics 📊
+                        </Link>
+                    </div>
+
                     <section>
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-2xl font-bold text-slate-900">Active Licenses</h2>
@@ -119,6 +139,18 @@ export default async function SchoolDashboardPage() {
 
                                             {/* Quick Assign Form Component */}
                                             <AssignSeatForm licenseId={license.id} />
+
+                                            {/* Bulk Assign Component (SRS Requirement) */}
+                                            <BulkAssignForm
+                                                licenseId={license.id}
+                                                availableSeats={license.totalSeats - license.usedSeats}
+                                            />
+
+                                            {/* STUDENT PROGRESS MONITORING (NEW) */}
+                                            <StudentProgressList
+                                                courseId={license.moodleCourseId}
+                                                assignedStudentIds={license.assignments.map((a: any) => a.studentId)}
+                                            />
                                         </div>
                                     );
                                 })}
