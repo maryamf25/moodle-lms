@@ -21,6 +21,91 @@ const CONTEXT_LEVELS = {
     USER: 30,
 };
 
+const GET_USER_ROLES_WS = 'core_role_assign_get_user_roles';
+
+interface MoodleSiteInfoLike {
+    functions?: Array<{ name?: string }>;
+    exception?: string;
+    message?: string;
+}
+
+function toNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+}
+
+async function isWsFunctionAvailable(wsToken: string, wsFunction: string): Promise<boolean> {
+    const params = new URLSearchParams({
+        wstoken: wsToken,
+        wsfunction: 'core_webservice_get_site_info',
+        moodlewsrestformat: 'json',
+    });
+
+    const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
+    if (!response.ok) return false;
+
+    const data: MoodleSiteInfoLike = await response.json();
+    if (data?.exception || !Array.isArray(data?.functions)) return false;
+
+    return data.functions.some((fn) => fn?.name === wsFunction);
+}
+
+async function fetchUserRoleAssignments(userId: number): Promise<unknown[] | null> {
+    const adminToken = process.env.MOODLE_ADMIN_TOKEN;
+    if (!adminToken) {
+        authLog('admin token missing; skipping Moodle parent-role check', { userId });
+        return null;
+    }
+
+    const hasRolesFunction = await isWsFunctionAvailable(adminToken, GET_USER_ROLES_WS);
+    if (!hasRolesFunction) {
+        authLog('role assignment wsfunction unavailable on this Moodle instance', {
+            userId,
+            wsfunction: GET_USER_ROLES_WS,
+        });
+        return null;
+    }
+
+    const params = new URLSearchParams({
+        wstoken: adminToken,
+        wsfunction: GET_USER_ROLES_WS,
+        moodlewsrestformat: 'json',
+        userid: String(userId),
+    });
+
+    const response = await fetch(
+        `${BASE_URL}/webservice/rest/server.php?${params.toString()}`
+    );
+
+    if (!response.ok) {
+        authLog('role api http error', { status: response.status, userId });
+        return null;
+    }
+
+    const data: unknown = await response.json();
+    if (data && typeof data === 'object' && 'exception' in data) {
+        authLog('moodle api error response', {
+            userId,
+            error: (data as Record<string, unknown>).message,
+        });
+        return null;
+    }
+
+    if (!Array.isArray(data)) {
+        authLog('unexpected response type', {
+            userId,
+            type: typeof data,
+        });
+        return null;
+    }
+
+    return data;
+}
+
 /**
  * Check if a user has the Parent role in Moodle
  * The Parent role is usually assigned at the USER context level (contextlevel 30)
@@ -39,44 +124,8 @@ export async function isUserParentInMoodle(
 
         authLog('using parent role ID', { parentRoleId: PARENT_ROLE_ID });
 
-        // Query Moodle to get user role assignments (using ADMIN token for permissions)
-        const params = new URLSearchParams({
-            wstoken: process.env.MOODLE_ADMIN_TOKEN!,
-            wsfunction: 'core_role_assign_get_user_roles',
-            moodlewsrestformat: 'json',
-            userid: String(userId),
-        });
-
-        const response = await fetch(
-            `${BASE_URL}/webservice/rest/server.php?${params.toString()}`
-        );
-
-        if (!response.ok) {
-            authLog('role api http error', { status: response.status, userId });
-            return false;
-        }
-
-        const data: unknown = await response.json();
-
-        // Check if response is an error
-        if (
-            data &&
-            typeof data === 'object' &&
-            'exception' in data
-        ) {
-            authLog('moodle api error response', {
-                userId,
-                error: (data as Record<string, unknown>).message,
-            });
-            return false;
-        }
-
-        // Should be an array of role assignments
-        if (!Array.isArray(data)) {
-            authLog('unexpected response type', {
-                userId,
-                type: typeof data,
-            });
+        const data = await fetchUserRoleAssignments(userId);
+        if (!data) {
             return false;
         }
 
@@ -88,8 +137,8 @@ export async function isUserParentInMoodle(
 
         // Check if user has Parent role assigned at USER context level
         const isParent = data.some((assignment: Record<string, unknown>) => {
-            const roleid = assignment.roleid;
-            const contextlevel = assignment.contextlevel;
+            const roleid = toNumber(assignment.roleid);
+            const contextlevel = toNumber(assignment.contextlevel);
 
             authLog('checking assignment', {
                 roleid,
@@ -130,35 +179,17 @@ export async function getParentChildrenFromMoodle(
             ? Number(process.env.MOODLE_ROLE_PARENT_ID)
             : 9;
 
-        // Get all role assignments for the parent user (using ADMIN token)
-        const params = new URLSearchParams({
-            wstoken: process.env.MOODLE_ADMIN_TOKEN!,
-            wsfunction: 'core_role_assign_get_user_roles',
-            moodlewsrestformat: 'json',
-            userid: String(parentUserId),
-        });
-
-        const response = await fetch(
-            `${BASE_URL}/webservice/rest/server.php?${params.toString()}`
-        );
-
-        if (!response.ok || !response.ok) {
+        const data = await fetchUserRoleAssignments(parentUserId);
+        if (!data) {
             authLog('failed to get role assignments', { parentUserId });
-            return [];
-        }
-
-        const data: unknown = await response.json();
-
-        if (!Array.isArray(data)) {
-            authLog('unexpected role assignments response', { parentUserId });
             return [];
         }
 
         // Filter for Parent role assignments at USER context
         const parentAssignments = data.filter((assignment: Record<string, unknown>) => {
             return (
-                assignment.roleid === PARENT_ROLE_ID &&
-                assignment.contextlevel === CONTEXT_LEVELS.USER
+                toNumber(assignment.roleid) === PARENT_ROLE_ID &&
+                toNumber(assignment.contextlevel) === CONTEXT_LEVELS.USER
             );
         });
 
@@ -171,11 +202,11 @@ export async function getParentChildrenFromMoodle(
         // For USER context, the instanceid is the user ID
         const childIds = parentAssignments.map((assignment: Record<string, unknown>) => {
             // In user context, instanceid is the child's user ID
-            return assignment.instanceid;
+            return toNumber(assignment.instanceid);
         });
 
         authLog('extracted child IDs', { parentUserId, childIds });
-        return childIds as number[];
+        return childIds.filter((id): id is number => id !== null);
     } catch (error) {
         authLog('error getting children', {
             parentUserId,

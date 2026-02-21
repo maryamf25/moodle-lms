@@ -164,17 +164,7 @@ export async function getUserRole(token: string, siteInfo?: MoodleSiteInfoRespon
         // Silent fail
     }
 
-    // 4. Check Moodle for Parent roleassignments (fallback)
-    try {
-        const { isUserParentInMoodle } = await import('./parents');
-        if (await isUserParentInMoodle(token, info.userid)) {
-            return 'parent';
-        }
-    } catch (err) {
-        // Silent fail
-    }
-
-    // 5. Default
+    // 4. Default
     return 'student';
 }
 

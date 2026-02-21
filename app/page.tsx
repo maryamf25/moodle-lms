@@ -1,98 +1,10 @@
 import Link from "next/link";
-import { getCategories } from "@/lib/moodle";
+import CourseCatalogClient from "@/components/features/course/CourseCatalogClient";
 
 export const dynamic = 'force-dynamic';
 
-
-interface Course {
-  id: number;
-  fullname: string;
-  shortname: string;
-  summary: string;
-  startdate: number;
-  enddate: number;
-  format: string;
-  visible?: number;
-  categoryid?: number;
-  overviewfiles?: { fileurl: string }[];
-}
-
-interface CourseCategory {
-  id: number;
-  name: string;
-}
-
-async function getCourses(): Promise<Course[]> {
-  const moodleUrl = process.env.NEXT_PUBLIC_MOODLE_URL;
-  const token = process.env.MOODLE_TOKEN; // Note: Use SERVER-SIDE token for fetching public courses if possible, or client side? usually public courses need a specific token or none if open. limiting to avoid exposure.
-
-  if (!moodleUrl || !token) {
-    console.error('ERROR: Missing MOODLE_URL or MOODLE_TOKEN in .env file');
-    return [];
-  }
-
-  // API Parameters
-  const params = new URLSearchParams({
-    wstoken: token,
-    wsfunction: 'core_course_get_courses',
-    moodlewsrestformat: 'json',
-  });
-
-  try {
-    const res = await fetch(`${moodleUrl}/webservice/rest/server.php?${params}`, { cache: 'no-store' });
-
-    if (!res.ok) {
-      throw new Error(`Failed to fetch data: ${res.status} ${res.statusText}`);
-    }
-
-    const text = await res.text();
-
-    let data: unknown;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      console.error("Invalid JSON received:", text);
-      return [];
-    }
-
-    if (typeof data === 'object' && data !== null && 'exception' in data) {
-      const apiError = data as { message?: string; errorcode?: string };
-      console.error(`Moodle API Error: ${apiError.message} (${apiError.errorcode})`);
-      return [];
-    }
-
-    return Array.isArray(data) ? data as Course[] : [];
-
-  } catch (error) {
-    console.error('Error fetching courses:', error);
-    return [];
-  }
-}
-
-// Helper to format date
-const formatDate = (timestamp: number) => {
-  if (!timestamp) return 'On-going';
-  return new Date(timestamp * 1000).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-};
-
 export default async function Home() {
-  const courses = await getCourses();
-  const token = process.env.MOODLE_TOKEN || '';
-  const categories = await getCategories(token) as CourseCategory[];
-
-  // Group courses by category
-  const coursesByCategory = courses.reduce((acc: Record<string, Course[]>, course) => {
-    if (course.format === 'site' || course.visible === 0) return acc;
-    const cat = categories.find((c) => c.id === course.categoryid);
-    const catName = cat ? cat.name : 'Other Courses';
-    if (!acc[catName]) acc[catName] = [];
-    acc[catName].push(course);
-    return acc;
-  }, {});
+  const token = process.env.MOODLE_TOKEN || ''; 
 
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900">
@@ -171,86 +83,11 @@ export default async function Home() {
         <div className="text-center mb-16">
           <h2 className="text-base font-semibold text-blue-600 tracking-wide uppercase">Our Catalog</h2>
           <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
-            Explore by Category
+            Browse All Courses
           </p>
         </div>
 
-        <div className="space-y-20">
-          {Object.keys(coursesByCategory).length > 0 ? (
-            Object.entries(coursesByCategory).map(([categoryName, categoryCourses]) => (
-              <div key={categoryName} className="scroll-mt-20">
-                <div className="flex items-center gap-4 mb-8">
-                  <h3 className="text-2xl font-bold text-gray-900">{categoryName}</h3>
-                  <div className="flex-1 h-px bg-gray-100"></div>
-                  <span className="text-sm font-medium text-gray-400 bg-gray-50 px-3 py-1 rounded-full">
-                    {categoryCourses.length} {categoryCourses.length === 1 ? 'Course' : 'Courses'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                  {categoryCourses.map((course) => (
-                    <div
-                      key={course.id}
-                      className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col border border-gray-100 group"
-                    >
-                      {/* --- Course Image --- */}
-                      <div className="h-56 bg-gray-200 relative overflow-hidden">
-                        <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors z-10"></div>
-                        {course.overviewfiles && course.overviewfiles.length > 0 ? (
-                          <img
-                            src={`${course.overviewfiles[0].fileurl}?token=${token}`}
-                            alt={course.fullname}
-                            className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-blue-50">
-                            <span className="text-blue-300 text-6xl font-bold opacity-50">
-                              {course.shortname.toUpperCase().substring(0, 2)}
-                            </span>
-                          </div>
-                        )}
-                        <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-blue-600 shadow-sm">
-                          {course.shortname}
-                        </div>
-                      </div>
-
-                      {/* --- Course Body --- */}
-                      <div className="p-8 flex-1 flex flex-col">
-                        <div className="mb-4">
-                          <h2 className="text-xl font-bold text-gray-900 mb-2 leading-tight group-hover:text-blue-600 transition-colors">
-                            {course.fullname}
-                          </h2>
-                          <div className="flex items-center text-xs text-gray-500 mb-4">
-                            <svg className="w-4 h-4 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span>{formatDate(course.startdate)}</span>
-                          </div>
-                          <div
-                            className="text-gray-600 text-sm line-clamp-2 prose prose-sm"
-                            dangerouslySetInnerHTML={{ __html: course.summary }}
-                          />
-                        </div>
-                        <div className="mt-auto pt-6">
-                          <Link
-                            href={`/course/${course.id}`}
-                            className="block w-full text-center bg-gray-50 border border-gray-200 text-gray-700 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 font-bold py-3 px-4 rounded-xl transition-all duration-200"
-                          >
-                            View Details
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-24 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
-              <p className="text-gray-500 text-xl font-medium">No courses available in the catalog.</p>
-            </div>
-          )}
-        </div>
+        <CourseCatalogClient token={token} />
       </div>
 
       {/* Footer */}

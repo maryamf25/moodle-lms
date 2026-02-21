@@ -2,6 +2,7 @@
 
 import { registerUser, RegisterUserError } from '@/lib/moodle/index';
 import { prisma } from '@/lib/db/prisma';
+import { MoodleRole } from '@/lib/auth/roles';
 
 interface RegisterActionResult {
     success: boolean;
@@ -28,28 +29,32 @@ export async function registerUserAction(input: {
         email: input.email.trim().toLowerCase(),
     };
 
-    console.log(`[register] Initiating registration for role: ${input.role}`, { username: payload.username });
+    const requestedRole = input.role as MoodleRole;
+    const allowedRoles: MoodleRole[] = ['student', 'parent', 'school', 'admin'];
+    if (!allowedRoles.includes(requestedRole)) {
+        return { success: false, message: 'Invalid role selected' };
+    }
+
+    console.log(`[register] Initiating registration for role: ${requestedRole}`, { username: payload.username });
 
     if (!payload.username || !payload.password || !payload.firstname || !payload.lastname || !payload.email) {
         return { success: false, message: 'All fields are required' };
     }
 
     try {
-        // 1. Store the intended role locally by username
-        // We do this BEFORE Moodle registration to ensure we have the intent captured.
-        // If Moodle registration fails, this won't hurt. 
-        // If it succeeds but needs email confirmation, we'll have it ready for when they first login.
+        // 1. Store intended role so first login resolves to same role in app DB
         await (prisma as any).registrationRole.upsert({
             where: { username: payload.username },
-            update: { role: input.role as any }, // Cast to any to handle UserRole enum
+            update: { role: requestedRole as any },
             create: {
                 username: payload.username,
-                role: input.role as any
+                role: requestedRole as any,
             },
         });
 
-        // 2. Register in Moodle
+        // 2. Register user via signup token flow (auth_email_signup_user)
         const created = await registerUser(payload);
+
         return {
             success: true,
             userId: created.id,
