@@ -1,4 +1,4 @@
-import { BASE_URL } from './api';
+import { moodleWebserviceGet } from './client';
 
 export interface CourseGrade {
     courseId: number;
@@ -15,14 +15,10 @@ export async function getStudentGrades(childId: number): Promise<CourseGrade[]> 
     try {
         // 1. Get user's enrolled courses
         const coursesParams = new URLSearchParams({
-            wstoken: adminToken,
-            wsfunction: 'core_enrol_get_users_courses',
-            moodlewsrestformat: 'json',
             userid: String(childId),
         });
 
-        const coursesRes = await fetch(`${BASE_URL}/webservice/rest/server.php?${coursesParams.toString()}`);
-        const courses = await coursesRes.json();
+        const courses = await moodleWebserviceGet<any>(adminToken, 'core_enrol_get_users_courses', coursesParams);
 
         if (!Array.isArray(courses)) return [];
 
@@ -30,15 +26,11 @@ export async function getStudentGrades(childId: number): Promise<CourseGrade[]> 
         const gradesProm = courses.map(async (course: any) => {
             try {
                 const gradeParams = new URLSearchParams({
-                    wstoken: adminToken,
-                    wsfunction: 'gradereport_user_get_grade_items',
-                    moodlewsrestformat: 'json',
                     courseid: String(course.id),
                     userid: String(childId),
                 });
 
-                const gradeRes = await fetch(`${BASE_URL}/webservice/rest/server.php?${gradeParams.toString()}`);
-                const gradeData = await gradeRes.json();
+                const gradeData = await moodleWebserviceGet<any>(adminToken, 'gradereport_user_get_grade_items', gradeParams);
 
                 // Extract final grade (usually at the end of the usergrades array)
                 const finalGradeItem = gradeData?.usergrades?.[0]?.gradeitems?.find((item: any) => item.itemtype === 'course');

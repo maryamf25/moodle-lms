@@ -1,5 +1,5 @@
-import { BASE_URL } from './api';
 import { getUserCourses } from './courses';
+import { moodleWebserviceGet } from './client';
 
 export interface ActivityTimelineItem {
     id: number;
@@ -34,28 +34,21 @@ export async function getStudentActivityTimeline(token: string, userId: number):
         const completionPromises = courses.map(async (course) => {
             // 1. Fetch completion statuses
             const statusParams = new URLSearchParams({
-                wstoken: effectiveToken!,
-                wsfunction: 'core_completion_get_activities_completion_status',
-                moodlewsrestformat: 'json',
                 courseid: String(course.id),
                 userid: String(userId),
             });
 
             // 2. Also fetch course contents to get real module names
             const contentsParams = new URLSearchParams({
-                wstoken: token,
-                wsfunction: 'core_course_get_contents',
-                moodlewsrestformat: 'json',
                 courseid: String(course.id),
             });
 
             const [statusRes, contentsRes] = await Promise.all([
-                fetch(`${BASE_URL}/webservice/rest/server.php?${statusParams.toString()}`),
-                fetch(`${BASE_URL}/webservice/rest/server.php?${contentsParams.toString()}`)
+                moodleWebserviceGet<any>(effectiveToken!, 'core_completion_get_activities_completion_status', statusParams),
+                moodleWebserviceGet<any>(token, 'core_course_get_contents', contentsParams),
             ]);
-
-            const statusData = await statusRes.json();
-            const contentsData = await contentsRes.json();
+            const statusData = statusRes;
+            const contentsData = contentsRes;
 
             // Create a map for module names
             const moduleNameMap: Record<number, string> = {};
@@ -113,16 +106,12 @@ export async function getStudentCertificates(token: string, userId: number): Pro
         for (const course of courses) {
             // Check badges as a fallback for "completion evidence"
             const badgeParams = new URLSearchParams({
-                wstoken: token,
-                wsfunction: 'core_badges_get_user_badges',
-                moodlewsrestformat: 'json',
                 userid: String(userId),
                 courseid: String(course.id),
             });
 
             try {
-                const badgeRes = await fetch(`${BASE_URL}/webservice/rest/server.php?${badgeParams.toString()}`);
-                const badgeData = await badgeRes.json();
+                const badgeData = await moodleWebserviceGet<any>(token, 'core_badges_get_user_badges', badgeParams);
 
                 if (badgeData && badgeData.badges && Array.isArray(badgeData.badges)) {
                     badgeData.badges.forEach((badge: any) => {

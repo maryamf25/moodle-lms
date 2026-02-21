@@ -1,5 +1,6 @@
 import { BASE_URL, SERVICE } from './api';
 import { UserData } from './types';
+import { moodleWebserviceGet, moodleWebservicePost } from './client';
 
 interface MoodleErrorResponse {
     exception?: string;
@@ -118,33 +119,7 @@ function getMoodleError(data: unknown): MoodleErrorResponse | null {
 }
 
 async function callAdminWebservice(wsfunction: string, params: URLSearchParams): Promise<unknown> {
-    if (!BASE_URL) {
-        throw new Error('NEXT_PUBLIC_MOODLE_URL is not configured');
-    }
-
-    const body = new URLSearchParams({
-        wstoken: getAdminTokenOrThrow(),
-        wsfunction,
-        moodlewsrestformat: 'json',
-    });
-
-    params.forEach((value, key) => {
-        body.append(key, value);
-    });
-
-    const response = await fetch(`${BASE_URL}/webservice/rest/server.php`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-    });
-
-    if (!response.ok) {
-        throw new Error(`Moodle request failed (${wsfunction}) with status ${response.status}`);
-    }
-
-    const data: unknown = await response.json();
+    const data: unknown = await moodleWebservicePost(getAdminTokenOrThrow(), wsfunction, params);
     const moodleError = getMoodleError(data);
     if (moodleError?.exception || moodleError?.errorcode) {
         throw new Error(moodleError.message || `Moodle API error in ${wsfunction}`);
@@ -239,14 +214,10 @@ export async function getAutoLoginUrl(token: string, privateToken: string): Prom
     try {
         // 1. Fetch the auto-login key
         const params = new URLSearchParams({
-            wstoken: token,
-            wsfunction: 'tool_mobile_get_autologin_key',
-            moodlewsrestformat: 'json',
             privatetoken: privateToken // Required for this function
         });
 
-        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-        const data = await response.json();
+        const data = await moodleWebserviceGet<any>(token, 'tool_mobile_get_autologin_key', params);
 
         if (data.exception || !data.key) {
             console.error("Auto-login key error:", data);
@@ -337,31 +308,13 @@ export async function registerDirectlyViaAdmin(userData: UserData): Promise<Regi
 
 async function registerViaAuthEmailSignupUser(userData: UserData, token: string): Promise<RegisterUserResult> {
     const wsfunction = 'auth_email_signup_user';
-    const bodyParams = new URLSearchParams();
-    bodyParams.append('username', userData.username);
-    bodyParams.append('password', userData.password);
-    bodyParams.append('firstname', userData.firstname);
-    bodyParams.append('lastname', userData.lastname);
-    bodyParams.append('email', userData.email);
-
-    const url = `${BASE_URL}/webservice/rest/server.php?wstoken=${encodeURIComponent(token)}&wsfunction=${wsfunction}&moodlewsrestformat=json`;
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: bodyParams.toString(),
-    });
-
-    if (!response.ok) {
-        throw new RegisterUserError(`Registration failed with status: ${response.status}`, {
-            stage: 'http-fallback',
-            wsfunction,
-            status: response.status,
-        });
-    }
-
-    const data: unknown = await response.json();
+    const data: unknown = await moodleWebservicePost(token, wsfunction, new URLSearchParams({
+        username: userData.username,
+        password: userData.password,
+        firstname: userData.firstname,
+        lastname: userData.lastname,
+        email: userData.email,
+    }));
     const moodleError = data as MoodleErrorResponse;
     if (moodleError.exception || moodleError.errorcode) {
         throw new RegisterUserError(moodleError.message || 'Moodle returned an API error', {

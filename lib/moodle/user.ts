@@ -1,6 +1,6 @@
-import { BASE_URL } from './api';
 import { UserProfile } from './types';
-import { MoodleRole, normalizeRole } from '@/lib/auth/roles';
+import { MoodleRole } from '@/lib/auth/roles';
+import { moodleWebserviceGet } from './client';
 
 const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
 
@@ -17,16 +17,10 @@ function authLog(message: string, data?: Record<string, unknown>) {
 export async function getUserByEmail(email: string) {
     try {
         const params = new URLSearchParams({
-            wstoken: process.env.MOODLE_ADMIN_TOKEN!,
-            wsfunction: 'core_user_get_users_by_field',
-            moodlewsrestformat: 'json',
             'field': 'email',
             'values[0]': email
         });
-
-        const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-        const data = await response.json();
-        return data;
+        return await moodleWebserviceGet(process.env.MOODLE_ADMIN_TOKEN!, 'core_user_get_users_by_field', params);
     } catch (error) {
         console.error('Get user error:', error);
         throw error;
@@ -95,22 +89,15 @@ const ROLE_KEYWORDS: Array<{ role: MoodleRole; keywords: string[] }> = [
 ];
 
 async function getSiteInfo(token: string): Promise<MoodleSiteInfoResponse> {
-    const params = new URLSearchParams({
-        wstoken: token,
-        wsfunction: 'core_webservice_get_site_info',
-        moodlewsrestformat: 'json',
-    });
-
-    const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-    if (!response.ok) throw new Error('Failed to fetch profile');
-    const data = await response.json();
+    const params = new URLSearchParams();
+    const data = await moodleWebserviceGet(token, 'core_webservice_get_site_info', params);
     authLog('site info fetched', {
-        userid: data?.userid,
-        username: data?.username,
-        userissiteadmin: data?.userissiteadmin,
-        hasException: Boolean(data?.exception),
+        userid: (data as any)?.userid,
+        username: (data as any)?.username,
+        userissiteadmin: (data as any)?.userissiteadmin,
+        hasException: Boolean((data as any)?.exception),
     });
-    return data;
+    return data as MoodleSiteInfoResponse;
 }
 
 // Removed fetchRoleAssignments - Moodle API function does not exist in all instances
@@ -193,15 +180,10 @@ export async function getFullUserProfile(token: string, userid: number) {
 
         const fetchProfile = async (useToken: string) => {
             const params = new URLSearchParams({
-                wstoken: useToken,
-                wsfunction: 'core_user_get_users_by_field',
-                moodlewsrestformat: 'json',
                 'field': 'id',
                 'values[0]': userid.toString()
             });
-            const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-            if (!response.ok) return null;
-            return await response.json();
+            return await moodleWebserviceGet(useToken, 'core_user_get_users_by_field', params);
         };
 
         let data = await fetchProfile(effectiveToken!);
@@ -234,18 +216,13 @@ export async function getFullUserProfiles(token: string, userids: number[]) {
     const fetchProfiles = async (useToken: string) => {
         try {
             const params = new URLSearchParams({
-                wstoken: useToken,
-                wsfunction: 'core_user_get_users_by_field',
-                moodlewsrestformat: 'json',
                 'field': 'id',
             });
             userids.forEach((id, index) => {
                 params.append(`values[${index}]`, id.toString());
             });
 
-            const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-            if (!response.ok) return [];
-            const data = await response.json();
+            const data = await moodleWebserviceGet(useToken, 'core_user_get_users_by_field', params);
 
             if (Array.isArray(data) && data.length > 0) return data;
             return [];

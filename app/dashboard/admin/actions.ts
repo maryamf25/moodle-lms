@@ -6,10 +6,10 @@ import { requireAppAuth } from '@/lib/auth/server-session';
 import { prisma } from '@/lib/db/prisma';
 import {
   getMoodleCategoriesAdmin,
-  getMoodleCoursesAdmin,
   updateMoodleCourseCategory,
   updateMoodleCourseVisibility,
 } from '@/lib/moodle/admin-courses';
+import { syncCourseCatalogFromMoodle } from '@/lib/moodle/sync-course-catalog';
 import {
   assignMoodleUserRole,
   getMoodleUserById,
@@ -234,115 +234,16 @@ export async function assignRoleAction(input: AssignRoleInput): Promise<AdminAct
 
 export async function syncCoursesFromMoodleAction(): Promise<AdminActionResult> {
   const auth = await requireAppAuth('admin');
-  console.log('[admin][courses] sync action invoked', {
-    adminMoodleUserId: auth.moodleUserId,
-    adminUsername: auth.username,
-  });
   const actingAdmin = await ensureActingAdminUser(auth.moodleUserId, auth.username);
-  const [moodleCourses, moodleCategories] = await Promise.all([
-    getMoodleCoursesAdmin(),
-    getMoodleCategoriesAdmin().catch(() => []),
-  ]);
-  console.log('[admin][courses] moodle fetch completed', {
-    courseCount: moodleCourses.length,
-    categoryCount: moodleCategories.length,
-  });
-  const categoryMap = new Map(moodleCategories.map((category) => [category.id, category.name]));
-
-  await prisma.$transaction(async (tx) => {
-    const moodleCourseIds = moodleCourses.map((course) => course.id);
-
-    for (const course of moodleCourses) {
-      const existing = await tx.courseCatalog.findUnique({
-        where: { moodleCourseId: course.id },
-        select: { price: true },
-      });
-      const existingPrice = existing ? Number(existing.price) : null;
-      const resolvedPrice =
-        existingPrice !== null
-          ? (existingPrice > 0 ? existingPrice : (course.moodlePrice ?? existingPrice))
-          : (course.moodlePrice ?? 0);
-      console.log('[admin][courses] sync upsert input', {
-        moodleCourseId: course.id,
-        fullname: course.fullname,
-        existingPrice,
-        moodlePrice: course.moodlePrice,
-        resolvedPrice,
-      });
-      await tx.courseCatalog.upsert({
-        where: { moodleCourseId: course.id },
-        create: {
-          moodleCourseId: course.id,
-          shortname: course.shortname,
-          fullname: course.fullname,
-          summary: course.summary,
-          categoryId: course.categoryId,
-          categoryName: course.categoryId ? categoryMap.get(course.categoryId) || null : null,
-          isVisible: course.visible,
-          price: resolvedPrice,
-          lastSyncedAt: new Date(),
-        },
-        update: {
-          shortname: course.shortname,
-          fullname: course.fullname,
-          summary: course.summary,
-          categoryId: course.categoryId,
-          categoryName: course.categoryId ? categoryMap.get(course.categoryId) || null : null,
-          isVisible: course.visible,
-          price: resolvedPrice,
-          lastSyncedAt: new Date(),
-        },
-      });
-    }
-
-    const staleDelete = await tx.courseCatalog.deleteMany({
-      where: {
-        moodleCourseId: {
-          notIn: moodleCourseIds,
-        },
-      },
-    });
-
-    await tx.adminActivityLog.create({
-      data: {
-        adminUserId: actingAdmin.id,
-        action: 'COURSES_SYNCED',
-        details: {
-          syncedCount: moodleCourses.length,
-          removedCount: staleDelete.count,
-        },
-      },
-    });
-  });
-  const catalogCount = await prisma.courseCatalog.count();
-  const coursePrices = await prisma.courseCatalog.findMany({
-    orderBy: { moodleCourseId: 'asc' },
-    select: {
-      moodleCourseId: true,
-      fullname: true,
-      price: true,
-    },
-  });
-  console.log('[admin][courses] local catalog synced', {
-    catalogCount,
-    syncedCount: moodleCourses.length,
-  });
-  console.log(
-    '[admin][courses] local catalog prices',
-    coursePrices.map((course) => ({
-      moodleCourseId: course.moodleCourseId,
-      fullname: course.fullname,
-      price: Number(course.price),
-    })),
-  );
+  const syncResult = await syncCourseCatalogFromMoodle({ actingAdminUserId: actingAdmin.id });
 
   revalidatePath('/dashboard/admin');
   revalidatePath('/');
   const categoryMessage =
-    moodleCategories.length === 0
+    syncResult.categoryCount === 0
       ? ' (courses synced; category API not accessible with current token)'
       : '';
-  return { ok: true, message: `${moodleCourses.length} courses synced from Moodle${categoryMessage}` };
+  return { ok: true, message: `${syncResult.syncedCount} courses synced from Moodle${categoryMessage}` };
 }
 
 export async function setCoursePriceAction(input: SetCoursePriceInput): Promise<AdminActionResult> {

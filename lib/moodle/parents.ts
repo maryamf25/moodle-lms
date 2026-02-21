@@ -1,4 +1,4 @@
-import { BASE_URL } from './api';
+import { moodleWebserviceGet } from './client';
 
 const AUTH_DEBUG = process.env.AUTH_DEBUG === '1';
 
@@ -39,19 +39,13 @@ function toNumber(value: unknown): number | null {
 }
 
 async function isWsFunctionAvailable(wsToken: string, wsFunction: string): Promise<boolean> {
-    const params = new URLSearchParams({
-        wstoken: wsToken,
-        wsfunction: 'core_webservice_get_site_info',
-        moodlewsrestformat: 'json',
-    });
-
-    const response = await fetch(`${BASE_URL}/webservice/rest/server.php?${params.toString()}`);
-    if (!response.ok) return false;
-
-    const data: MoodleSiteInfoLike = await response.json();
-    if (data?.exception || !Array.isArray(data?.functions)) return false;
-
-    return data.functions.some((fn) => fn?.name === wsFunction);
+    try {
+        const data = await moodleWebserviceGet<MoodleSiteInfoLike>(wsToken, 'core_webservice_get_site_info', new URLSearchParams());
+        if (data?.exception || !Array.isArray(data?.functions)) return false;
+        return data.functions.some((fn) => fn?.name === wsFunction);
+    } catch {
+        return false;
+    }
 }
 
 async function fetchUserRoleAssignments(userId: number): Promise<unknown[] | null> {
@@ -70,23 +64,11 @@ async function fetchUserRoleAssignments(userId: number): Promise<unknown[] | nul
         return null;
     }
 
-    const params = new URLSearchParams({
-        wstoken: adminToken,
-        wsfunction: GET_USER_ROLES_WS,
-        moodlewsrestformat: 'json',
-        userid: String(userId),
-    });
-
-    const response = await fetch(
-        `${BASE_URL}/webservice/rest/server.php?${params.toString()}`
+    const data: unknown = await moodleWebserviceGet(
+        adminToken,
+        GET_USER_ROLES_WS,
+        new URLSearchParams({ userid: String(userId) }),
     );
-
-    if (!response.ok) {
-        authLog('role api http error', { status: response.status, userId });
-        return null;
-    }
-
-    const data: unknown = await response.json();
     if (data && typeof data === 'object' && 'exception' in data) {
         authLog('moodle api error response', {
             userId,

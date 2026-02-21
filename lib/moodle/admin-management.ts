@@ -1,5 +1,5 @@
-import { BASE_URL } from '@/lib/moodle/api';
 import { MoodleRole } from '@/lib/auth/roles';
+import { moodleWebservicePost } from '@/lib/moodle/client';
 
 interface MoodleErrorShape {
   exception?: string;
@@ -35,33 +35,11 @@ function parseMoodleError(payload: unknown): MoodleErrorShape | null {
 }
 
 async function callMoodleAdmin(wsfunction: string, params: URLSearchParams): Promise<unknown> {
-  if (!BASE_URL) {
-    throw new Error('NEXT_PUBLIC_MOODLE_URL is not configured');
-  }
-
-  const body = new URLSearchParams({
-    wstoken: getAdminTokenOrThrow(),
-    wsfunction,
-    moodlewsrestformat: 'json',
-  });
-  params.forEach((value, key) => body.append(key, value));
-
-  const response = await fetch(`${BASE_URL}/webservice/rest/server.php`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Moodle request failed (${wsfunction}) with status ${response.status}`);
-  }
-
-  const data: unknown = await response.json();
+  const data = await moodleWebservicePost(getAdminTokenOrThrow(), wsfunction, params);
   const moodleError = parseMoodleError(data);
   if (moodleError?.exception || moodleError?.errorcode) {
     throw new Error(moodleError.message || `Moodle returned an error in ${wsfunction}`);
   }
-
   return data;
 }
 
