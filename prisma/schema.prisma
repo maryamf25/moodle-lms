@@ -494,3 +494,42 @@ model OrderItem {
   @@index([courseId])
 }
 
+model DeadLetterQueue {
+  id            String   @id @default(cuid())
+  jobType       String   // EMAIL_SEND, ENROLLMENT, PAYMENT_VERIFICATION, etc.
+  payload       Json     // Original job payload
+  error         String   // Error message from the failed job
+  retryCount    Int      @default(0) // Number of retry attempts
+  maxRetries    Int      @default(3) // Maximum number of retries allowed
+  nextRetryAt   DateTime // When to retry next
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([jobType, nextRetryAt])
+  @@index([retryCount])
+  @@index([createdAt])
+}
+
+model BackgroundJob {
+  id            String   @id @default(cuid())
+  jobType       String   // EMAIL_PASSWORD_RESET, PAYMENT_VERIFY, MOODLE_SYNC_COURSES, etc.
+  status        String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, RETRYING, ABANDONED
+  payload       Json     // Job payload/input data
+  result        Json?    // Job result/output data
+  error         String?  // Error message if job failed
+  retryCount    Int      @default(0) // Current retry attempt
+  maxRetries    Int      @default(3) // Maximum retry attempts
+  priority      Int      @default(3) // 1=low, 5=high
+  attempts      Json     @default("[]") // Array of attempt records
+  scheduledFor  DateTime? // When to execute (null = immediate)
+  startedAt     DateTime? // When job started processing
+  completedAt   DateTime? // When job completed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([jobType, status])
+  @@index([priority, scheduledFor])
+  @@index([createdAt])
+}
+
