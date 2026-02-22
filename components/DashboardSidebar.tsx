@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserProfile } from "@/lib/moodle/types";
+import NotificationBell from '@/components/features/dashboard/NotificationBell';
 
 interface DashboardSidebarProps {
     userProfile: UserProfile | null;
@@ -40,6 +41,7 @@ export default function DashboardSidebar({ userProfile, token }: DashboardSideba
                 </svg>
             ),
         },
+
         ...(userProfile?.role === "admin"
             ? [{
                 name: "Admin Management",
@@ -47,6 +49,14 @@ export default function DashboardSidebar({ userProfile, token }: DashboardSideba
                 icon: (
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                ),
+            }, {
+                name: "Analytics",
+                href: "/dashboard/admin/analytics",
+                icon: (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                 ),
             }, {
@@ -66,6 +76,15 @@ export default function DashboardSidebar({ userProfile, token }: DashboardSideba
                     </svg>
                 ),
             }, {
+                name: "Orders",
+                href: "/dashboard/admin/orders",
+                icon: (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                ),
+
+            }, {
                 name: "Integration",
                 href: "/dashboard/admin/integration",
                 icon: (
@@ -84,8 +103,37 @@ export default function DashboardSidebar({ userProfile, token }: DashboardSideba
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                 ),
+            }, {
+                name: "Order History",
+                href: "/dashboard/orders",
+                icon: (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                ),
             }]
             : []),
+
+        ...(userProfile?.role === "student"
+            ? [{
+                name: "Certificates",
+                href: "/dashboard/student/certificates",
+                icon: (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                ),
+            }, {
+                name: "Order History",
+                href: "/dashboard/orders",
+                icon: (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                ),
+            }]
+            : []),
+
     ];
 
     return (
@@ -117,7 +165,7 @@ export default function DashboardSidebar({ userProfile, token }: DashboardSideba
                         const isActive = item.name === "Dashboard"
                             ? (
                                 pathname === "/dashboard" ||
-                                (pathname.startsWith("/dashboard/student") && !pathname.includes("/analytics")) ||
+                                (pathname.startsWith("/dashboard/student") && !pathname.includes("/analytics") && !pathname.includes("/certificates")) ||
                                 (pathname.startsWith("/dashboard/parent") && !pathname.includes("/analytics")) ||
                                 (pathname.startsWith("/dashboard/school") && !pathname.includes("/analytics"))
                             )
@@ -137,6 +185,7 @@ export default function DashboardSidebar({ userProfile, token }: DashboardSideba
                             </Link>
                         );
                     })}
+                    <NotificationBell />
                 </nav>
             </div>
 

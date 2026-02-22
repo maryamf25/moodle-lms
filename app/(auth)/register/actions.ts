@@ -3,6 +3,7 @@
 import { registerUser, RegisterUserError } from '@/lib/moodle/index';
 import { prisma } from '@/lib/db/prisma';
 import { MoodleRole } from '@/lib/auth/roles';
+import { sendNotification } from '@/lib/notifications';
 
 interface RegisterActionResult {
     success: boolean;
@@ -54,6 +55,37 @@ export async function registerUserAction(input: {
 
         // 2. Register user via signup token flow (auth_email_signup_user)
         const created = await registerUser(payload);
+
+        let localUserId = "";
+        try {
+            // Note: Since auth_email_signup_user might require email confirmation,
+            // we first check/create the local user stub to map the notification to.
+            const localUser = await prisma.user.upsert({
+                where: { moodleUserId: created.id },
+                create: {
+                    moodleUserId: created.id,
+                    username: created.username || payload.username,
+                    email: payload.email,
+                    firstName: payload.firstname,
+                    lastName: payload.lastname,
+                    role: requestedRole,
+                },
+                update: {}
+            });
+            localUserId = localUser.id;
+        } catch (e) {
+            console.error("Failed to seed local user on registration", e);
+        }
+
+        if (localUserId) {
+            await sendNotification({
+                userId: localUserId,
+                title: 'Welcome to Edumeup! 🎉',
+                message: 'Aapka account successfully ban gaya hai. Apne dashboard se courses explore karein.',
+                type: 'SYSTEM',
+                actionUrl: '/dashboard',
+            });
+        }
 
         return {
             success: true,

@@ -72,6 +72,7 @@ model User {
   email        String?
   firstName    String?
   lastName     String?
+  profileImage String?
   role         UserRole @default(student)
   isSuspended  Boolean  @default(false)
   lastPasswordResetAt DateTime?
@@ -88,7 +89,9 @@ model User {
   supportTicketMessages SupportTicketMessage[] @relation("SupportTicketMessageAuthor")
   supportTicketAttachments SupportTicketAttachment[] @relation("SupportTicketAttachmentUploader")
   supportTicketNotifications SupportTicketNotification[]
-  courseEnrollments UserCourseEnrollment[]
+  notifications              Notification[]
+  courseEnrollments          UserCourseEnrollment[]
+  orders                     Order[]
 
   @@index([role])
   @@index([isSuspended])
@@ -109,6 +112,7 @@ model CourseCatalog {
   updatedAt      DateTime @updatedAt
   cartItems      CartItem[]
   enrollments    UserCourseEnrollment[]
+  orderItems     OrderItem[]
 
   @@index([categoryId])
   @@index([isVisible])
@@ -444,3 +448,49 @@ model IntegrationSyncRun {
   @@index([status, startedAt])
   @@index([configId, startedAt])
 }
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  message     String
+  type        String   // e.g., "SYSTEM", "COURSE_UPDATE", "PARENT_ALERT"
+  isRead      Boolean  @default(false)
+  actionUrl   String?  // Agar user is notification pe click kare to kahan jaye?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  userId        String
+  totalAmount   Decimal     @db.Decimal(10, 2)
+  status        String      @default("COMPLETED") // PENDING, COMPLETED, FAILED, REFUNDED
+  paymentMethod String      @default("SAFEPAY")
+  transactionId String?     
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items         OrderItem[]
+
+  @@index([userId])
+}
+
+model OrderItem {
+  id            String        @id @default(cuid())
+  orderId       String
+  courseId      String
+  price         Decimal       @db.Decimal(10, 2)
+  quantity      Int           @default(1)
+
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  course        CourseCatalog @relation(fields: [courseId], references: [id])
+
+  @@index([orderId])
+  @@index([courseId])
+}
+

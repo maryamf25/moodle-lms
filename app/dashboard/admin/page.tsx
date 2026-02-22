@@ -59,7 +59,7 @@ export default async function AdminDashboardPage() {
         courses={courses.map((course) => ({
           ...course,
           price: course.price.toString(),
-          lastSyncedAt: course.lastSyncedAt.toISOString(),
+          lastSyncedAt: course.lastSyncedAt ? new Date(course.lastSyncedAt).toISOString() : new Date().toISOString(),
         }))}
         categories={categories}
       />

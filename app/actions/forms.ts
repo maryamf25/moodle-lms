@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma';
 import { FormType, FieldType } from '@prisma/client';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { sendNotification } from '@/lib/notifications';
 
 interface FormFieldInput {
   fieldType: FieldType;
@@ -140,17 +141,17 @@ export async function updateForm(formId: string, input: Partial<CreateFormInput>
         type: input.type,
         fields: input.fields
           ? {
-              deleteMany: {},
-              create: input.fields.map(field => ({
-                fieldType: field.fieldType,
-                label: field.label,
-                placeholder: field.placeholder,
-                isRequired: field.isRequired,
-                order: field.order,
-                options: field.options ? JSON.stringify(field.options) : null,
-                validation: field.validation ? JSON.stringify(field.validation) : null,
-              })),
-            }
+            deleteMany: {},
+            create: input.fields.map(field => ({
+              fieldType: field.fieldType,
+              label: field.label,
+              placeholder: field.placeholder,
+              isRequired: field.isRequired,
+              order: field.order,
+              options: field.options ? JSON.stringify(field.options) : null,
+              validation: field.validation ? JSON.stringify(field.validation) : null,
+            })),
+          }
           : undefined,
       },
       include: {
@@ -200,6 +201,21 @@ export async function submitForm(input: FormSubmissionInput) {
         data: input.data,
       },
     });
+
+    // Admins ko dhoondein aur form submission ka alert bhejein
+    const adminUsers = await prisma.user.findMany({
+      where: { role: 'admin' }
+    });
+
+    for (const admin of adminUsers) {
+      await sendNotification({
+        userId: admin.id,
+        title: 'New Form Submission 📝',
+        message: `Ek naya form / teacher application submit hua hai. Review ke liye click karein.`,
+        type: 'SYSTEM',
+        actionUrl: `/dashboard/admin/forms`,
+      });
+    }
 
     // Handle file uploads if present
     if (input.files && input.files.length > 0) {

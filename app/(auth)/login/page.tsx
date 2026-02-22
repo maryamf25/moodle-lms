@@ -79,7 +79,7 @@ function LoginForm() {
                     />
                 </div>
 
-                <div className="mb-6">
+                <div className="mb-6 relative">
                     <label className="block text-sm font-medium mb-1 text-blue-600">Password</label>
                     <input
                         type="password"
@@ -89,11 +89,19 @@ function LoginForm() {
                         value={formData.password}
                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     />
+                    <div className="absolute top-1 right-0">
+                        <a href="/forgot-password" className="text-xs text-blue-500 hover:text-blue-700 font-medium">Forgot Password?</a>
+                    </div>
                 </div>
 
-                <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700 transition-colors">
-                    Login
-                </button>
+                <div className="space-y-4">
+                    <button type="submit" className="w-full bg-blue-600 font-bold text-white p-3 rounded hover:bg-blue-700 transition-colors">
+                        Sign In
+                    </button>
+                    <div className="text-center text-sm text-gray-500">
+                        Don't have an account? <a href="/register" className="text-blue-600 font-bold hover:underline">Register</a>
+                    </div>
+                </div>
             </form>
         </div>
     );

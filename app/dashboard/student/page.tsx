@@ -170,35 +170,6 @@ export default async function StudentDashboardPage() {
                         </div>
                     </section>
 
-                    {/* My Certificates Section (SRS 4.18) */}
-                    <section className="bg-white rounded-[2.5rem] border border-slate-200 p-8 shadow-sm">
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight mb-8 px-2">My Certificates</h2>
-                        {certificates.length === 0 ? (
-                            <div className="text-center py-10 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                                <span className="text-4xl mb-4 block">🏆</span>
-                                <p className="text-slate-400 font-bold">No certificates earned yet. Keep learning!</p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {certificates.map((cert) => (
-                                    <div key={cert.id} className="flex items-center p-4 bg-emerald-50 rounded-2xl border border-emerald-100 border-l-4 border-l-emerald-500">
-                                        <div className="text-2xl mr-4">🏅</div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-black text-slate-900 truncate">{cert.name}</p>
-                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{cert.courseName}</p>
-                                        </div>
-                                        <a
-                                            href={cert.url}
-                                            target="_blank"
-                                            className="text-emerald-600 font-bold text-xs hover:underline uppercase tracking-tighter"
-                                        >
-                                            Download
-                                        </a>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </section>
                 </div>
 
                 {/* Sidebar: Activity Timeline (SRS 4.6) */}
@@ -236,6 +207,6 @@ export default async function StudentDashboardPage() {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

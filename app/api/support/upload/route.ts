@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
 import { getAppAuthContext } from '@/lib/auth/server-session';
+import { uploadToS3 } from '@/lib/aws/s3'; // 👈 Import S3 utility
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set([
@@ -12,10 +11,6 @@ const ALLOWED_MIME_TYPES = new Set([
   'text/plain',
   'application/zip',
 ]);
-
-function sanitizeFileName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_');
-}
 
 export async function POST(request: NextRequest) {
   const auth = await getAppAuthContext();
@@ -39,25 +34,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File type not allowed' }, { status: 400 });
     }
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'support');
-    await fs.mkdir(uploadsDir, { recursive: true });
-
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).slice(2, 8);
-    const safeName = sanitizeFileName(file.name);
-    const storageName = `${timestamp}-${random}-${safeName}`;
-    const filePath = path.join(uploadsDir, storageName);
-
+    // Convert file to Buffer
     const arrayBuffer = await file.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+    const fileBuffer = Buffer.from(arrayBuffer);
 
+    // 👈 Upload to AWS S3 instead of local fs
+    const fileUrl = await uploadToS3(fileBuffer, file.name, file.type, 'support-tickets');
+
+    // Return the response with S3 URL
     return NextResponse.json({
       success: true,
-      storageName,
+      storageName: fileUrl.split('/').pop(), // Get the generated file name from URL
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
-      url: `/uploads/support/${storageName}`,
+      url: fileUrl, // 👈 This is now an S3 URL
     });
   } catch (error) {
     console.error('[support][upload] failed', error);

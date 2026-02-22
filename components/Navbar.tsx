@@ -21,7 +21,7 @@ export default async function Navbar() {
             userProfile = await getUserProfile(token);
             // Get cart count for logged-in user
             const session = await getUserSessionContext(token);
-            
+
             // Get the user's internal ID
             const user = await prisma.user.findUnique({
                 where: { moodleUserId: session.userid },

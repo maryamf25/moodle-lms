@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { enrolUser } from '@/lib/moodle/index';
 import { getUserId } from '@/app/(auth)/login/actions';
+import { sendNotification } from '@/lib/notifications';
+import { prisma } from '@/lib/db/prisma';
 
 export async function POST(request: Request) {
     try {
@@ -29,6 +31,65 @@ export async function POST(request: Request) {
 
         // 3. Enroll User on Moodle
         await enrolUser(userId, parseInt(courseId));
+
+        const dbUser = await prisma.user.findUnique({ where: { moodleUserId: userId } });
+
+        // Naya Code: Order Create Karein
+        const courseDetails = await prisma.courseCatalog.findUnique({
+            where: { moodleCourseId: parseInt(courseId) }
+        });
+
+        if (dbUser && courseDetails) {
+            await prisma.order.create({
+                data: {
+                    userId: dbUser.id,
+                    totalAmount: courseDetails.price,
+                    transactionId: tracker || `MANUAL-${Date.now()}`,
+                    status: 'COMPLETED',
+                    items: {
+                        create: [{
+                            courseId: courseDetails.id,
+                            price: courseDetails.price,
+                            quantity: 1
+                        }]
+                    }
+                }
+            });
+        }
+        // Naya Code Yahan Khatam
+
+        // Nayi Notification user ko bhejna:
+        if (dbUser) {
+            await sendNotification({
+                userId: dbUser.id,
+                title: 'Payment Successful & Enrolled! 🎓',
+                message: `Aap successfully course mein enroll ho gaye hain. Happy Learning!`,
+                type: 'PAYMENT',
+                actionUrl: '/dashboard/student',
+            });
+
+
+            // 2. Parent ko dhoondein aur Alert bhejein (SRS Section 4.10)
+            const parentLink = await prisma.parentChild.findFirst({
+                where: { childId: dbUser.moodleUserId }
+            });
+
+            if (parentLink) {
+                const parentUser = await prisma.user.findUnique({
+                    where: { moodleUserId: parentLink.parentId }
+                });
+
+                if (parentUser) {
+                    await sendNotification({
+                        userId: parentUser.id,
+                        title: 'New Course Enrollment 📚',
+                        message: `Aapke bache ne naya course join kiya hai. Dashboard se progress monitor karein.`,
+                        type: 'PARENT_ALERT',
+                        actionUrl: '/dashboard/parent',
+                    });
+                }
+            }
+        }
 
         return NextResponse.json({ success: true, message: 'Enrolled successfully' });
 

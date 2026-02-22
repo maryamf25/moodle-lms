@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { registerUserAction } from './actions';
 import { MoodleRole } from '@/lib/auth/roles';
+import PasswordStrengthIndicator from '@/components/PasswordStrengthIndicator';
 
 export default function RegisterPage() {
     const [formData, setFormData] = useState({
@@ -24,6 +25,30 @@ export default function RegisterPage() {
         e.preventDefault();
         setError('');
         setErrorDetails('');
+
+        // Moodle Password Policy Validation
+        const pwd = formData.password;
+        if (pwd.length < 8) {
+            setError("Password must be at least 8 characters long.");
+            return;
+        }
+        if (!/[0-9]/.test(pwd)) {
+            setError("Password must have at least 1 digit(s).");
+            return;
+        }
+        if (!/[a-z]/.test(pwd)) {
+            setError("Password must have at least 1 lower case letter(s).");
+            return;
+        }
+        if (!/[A-Z]/.test(pwd)) {
+            setError("Password must have at least 1 upper case letter(s).");
+            return;
+        }
+        if (!/[^a-zA-Z0-9]/.test(pwd)) {
+            setError("Password must have at least 1 non-alphanumeric character(s) such as *, -, or #.");
+            return;
+        }
+
         setIsLoading(true);
 
         try {
@@ -92,8 +117,8 @@ export default function RegisterPage() {
                                 type="button"
                                 onClick={() => setRole(r)}
                                 className={`py-4 px-2 rounded-2xl text-sm font-bold transition-all border-2 ${role === r
-                                        ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 scale-105'
-                                        : 'bg-white border-slate-100 text-slate-500 hover:border-blue-200 hover:text-blue-500'
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 scale-105'
+                                    : 'bg-white border-slate-100 text-slate-500 hover:border-blue-200 hover:text-blue-500'
                                     }`}
                             >
                                 <span className="block text-xl mb-1">
@@ -181,6 +206,7 @@ export default function RegisterPage() {
                             required
                             onChange={handleChange}
                         />
+                        {formData.password.length > 0 && <PasswordStrengthIndicator password={formData.password} />}
                     </div>
 
                     <button

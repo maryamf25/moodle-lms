@@ -5,6 +5,8 @@ import { IntegrationSyncTarget } from '@prisma/client';
 import { requireAppAuth } from '@/lib/auth/server-session';
 import { getAllSyncDashboards, upsertSyncConfig } from '@/lib/moodle/integration-config';
 import { runMoodleSyncs } from '@/lib/moodle/sync-scheduler';
+import { sendNotification } from '@/lib/notifications';
+import { prisma } from '@/lib/db/prisma';
 
 export async function getIntegrationSyncSettingsAction() {
   await requireAppAuth('admin');
@@ -46,6 +48,23 @@ export async function runIntegrationSyncNowAction(target: IntegrationSyncTarget)
 
   if (match.status === 'FAILED') {
     return { ok: false, message: match.error || `Sync ${target} failed` };
+  }
+
+  if (match.status === 'SUCCESS' && target === 'COURSE_CATALOG') {
+    // Sabhi active students ko dhoondein
+    const allStudents = await prisma.user.findMany({
+      where: { role: 'student', isSuspended: false }
+    });
+
+    for (const student of allStudents) {
+      await sendNotification({
+        userId: student.id,
+        title: 'New Courses Available! 🌟',
+        message: `Course catalog update ho gaya hai. Naye courses explore karein aur enroll hon!`,
+        type: 'COURSE_UPDATE',
+        actionUrl: '/dashboard/student',
+      });
+    }
   }
 
   return {

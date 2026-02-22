@@ -116,18 +116,22 @@ export async function getUserCourses(token: string, userid: number): Promise<Enr
     let courseList = Array.isArray(data) ? data : [];
 
     let timelineCourses: any[] = [];
-    try {
-      const timelineData = await moodleWebserviceGet<any>(
-        token,
-        'core_course_get_enrolled_courses_by_timeline_classification',
-        new URLSearchParams({ classification: 'all' }),
-      );
-
-      if (timelineData && !timelineData.exception) {
-        timelineCourses = timelineData.courses || [];
+    // Only attempt timeline API with user-scoped tokens (not admin token).
+    // This function requires enrollment access and fails with admin/service tokens.
+    const isAdminToken = token === adminToken;
+    if (!isAdminToken) {
+      try {
+        const timelineData = await moodleWebserviceGet<any>(
+          token,
+          'core_course_get_enrolled_courses_by_timeline_classification',
+          new URLSearchParams({ classification: 'all' }),
+        );
+        if (timelineData && !timelineData.exception) {
+          timelineCourses = timelineData.courses || [];
+        }
+      } catch {
+        // Silently skip — progress will come from core_enrol_get_users_courses
       }
-    } catch (e) {
-      console.warn('Could not fetch timeline progress', e);
     }
 
     if (courseList.length === 0 && timelineCourses.length > 0) {

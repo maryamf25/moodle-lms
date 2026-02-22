@@ -11,6 +11,7 @@ import { requireAppAuth } from '@/lib/auth/server-session';
 import { prisma } from '@/lib/db/prisma';
 import { FIRST_RESPONSE_SLA_HOURS, RESOLUTION_SLA_HOURS } from '@/lib/support/constants';
 import { sendSupportTicketEmail } from '@/lib/support/email';
+import { sendNotification } from '@/lib/notifications';
 
 type UploadedSupportFile = {
   originalName: string;
@@ -163,28 +164,28 @@ function mapTicket(ticket: any) {
     lastRepliedAt: ticket.lastRepliedAt ? ticket.lastRepliedAt.toISOString() : null,
     messages: ticket.messages
       ? ticket.messages.map((message: any) => ({
-          ...message,
-          createdAt: message.createdAt.toISOString(),
-          attachments: message.attachments
-            ? message.attachments.map((attachment: any) => ({
-                ...attachment,
-                uploadedAt: attachment.uploadedAt ? attachment.uploadedAt.toISOString() : null,
-              }))
-            : [],
-        }))
+        ...message,
+        createdAt: message.createdAt.toISOString(),
+        attachments: message.attachments
+          ? message.attachments.map((attachment: any) => ({
+            ...attachment,
+            uploadedAt: attachment.uploadedAt ? attachment.uploadedAt.toISOString() : null,
+          }))
+          : [],
+      }))
       : undefined,
     attachments: ticket.attachments
       ? ticket.attachments.map((attachment: any) => ({
-          ...attachment,
-          uploadedAt: attachment.uploadedAt ? attachment.uploadedAt.toISOString() : null,
-        }))
+        ...attachment,
+        uploadedAt: attachment.uploadedAt ? attachment.uploadedAt.toISOString() : null,
+      }))
       : undefined,
     notifications: ticket.notifications
       ? ticket.notifications.map((notification: any) => ({
-          ...notification,
-          createdAt: notification.createdAt.toISOString(),
-          readAt: notification.readAt ? notification.readAt.toISOString() : null,
-        }))
+        ...notification,
+        createdAt: notification.createdAt.toISOString(),
+        readAt: notification.readAt ? notification.readAt.toISOString() : null,
+      }))
       : undefined,
   };
 }
@@ -244,10 +245,30 @@ export async function createSupportTicketAction(input: CreateSupportTicketInput)
     return created;
   });
 
+  // Nayi Notification user ko bhejna:
+  await sendNotification({
+    userId: dbUser.id,
+    title: 'Ticket Submitted 🎫',
+    message: `Aapka ticket "${ticket.subject}" humein mosool ho gaya hai. Hum jald isko dekhenge.`,
+    type: 'SUPPORT',
+    actionUrl: '/dashboard/support',
+  });
+
   const admins = await prisma.user.findMany({
     where: { role: 'admin' },
     select: { id: true, email: true },
   });
+
+  // 2. System ke saare Admins ko dhoond kar unhein alert bhejein
+  for (const admin of admins) {
+    await sendNotification({
+      userId: admin.id,
+      title: 'Action Required: New Support Ticket 🚨',
+      message: `Ek user ne naya support ticket generate kiya hai. Fauran check karein.`,
+      type: 'SYSTEM',
+      actionUrl: `/dashboard/admin/support`,
+    });
+  }
 
   await notifyUsers({
     ticketId: ticket.id,
@@ -413,9 +434,9 @@ export async function addSupportTicketReplyAction(input: AddSupportReplyInput): 
   const admins = isAdminReply
     ? []
     : await prisma.user.findMany({
-        where: { role: 'admin' },
-        select: { id: true, email: true },
-      });
+      where: { role: 'admin' },
+      select: { id: true, email: true },
+    });
 
   const recipientUserIds = isAdminReply
     ? [ticket.createdByUser.id]
