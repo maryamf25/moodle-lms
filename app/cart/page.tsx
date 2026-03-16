@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { removeFromCartAction, clearCartAction, validateCouponAction, getCartAction } from '@/app/dashboard/cart/actions';
 import { useRouter } from 'next/navigation';
-
+import { enrollExistingUser } from '@/app/actions/enrollExisting';// Path to your enrollment file
 interface CartItem {
   id: string;
   courseId: string;
@@ -101,17 +101,39 @@ export default function CartPage() {
     }
   };
 
-  // Proceed to checkout
-  const handleCheckout = () => {
-    if (cartItems.length === 0) {
-      alert('Your cart is empty');
-      return;
-    }
-    // For now, redirect to a checkout page
-    // In the final implementation, this will integrate with SafePay
-    router.push(`/checkout?total=${Math.round(total * 100)}`);
-  };
+const handleCheckout = async () => {
+  if (cartItems.length === 0) return;
 
+  const firstCourseId = parseInt(cartItems[0].course.moodleCourseId.toString());
+  const payableAmount = Math.max(1, Math.round(total));
+  const result = await enrollExistingUser(firstCourseId, payableAmount);
+
+  if (result.error) {
+    alert(result.error);
+    return;
+  }
+
+  if (!result.actionUrl) {
+    alert('Checkout URL is missing');
+    return;
+  }
+
+  // 3️⃣ Submit form to PayFast in browser
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = result.actionUrl;
+
+  Object.entries(result.paymentData).forEach(([key, value]) => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = key;
+    input.value = String(value);
+    form.appendChild(input);
+  });
+
+  document.body.appendChild(form);
+  form.submit();
+};
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -250,9 +272,9 @@ export default function CartPage() {
                   Proceed to Checkout
                 </button>
 
-                <p className="text-xs text-gray-500 text-center mt-3">
-                  Secure checkout powered by SafePay
-                </p>
+               <p className="text-xs text-gray-500 text-center mt-3">
+  Secure checkout powered by PayFast
+</p>
               </div>
             </div>
           </div>

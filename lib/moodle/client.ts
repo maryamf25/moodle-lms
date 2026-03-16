@@ -62,6 +62,20 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isDnsResolutionError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const maybeError = error as { code?: unknown; cause?: unknown };
+
+  const directCode = typeof maybeError.code === 'string' ? maybeError.code : '';
+  if (directCode === 'ENOTFOUND' || directCode === 'EAI_AGAIN') return true;
+
+  if (!maybeError.cause || typeof maybeError.cause !== 'object') return false;
+  const causeCode = typeof (maybeError.cause as { code?: unknown }).code === 'string'
+    ? (maybeError.cause as { code?: string }).code
+    : '';
+  return causeCode === 'ENOTFOUND' || causeCode === 'EAI_AGAIN';
+}
+
 function buildMoodleUrl(path: string): string {
   if (!BASE_URL) {
     throw new Error('NEXT_PUBLIC_MOODLE_URL is not configured');
@@ -86,6 +100,7 @@ function buildPayload(token: string, wsfunction: string, params?: URLSearchParam
 export async function moodleWebserviceRequest<T = unknown>(options: MoodleRequestOptions): Promise<T> {
   const method = options.method ?? 'GET';
   const { maxRetries, baseDelayMs, maxDelayMs } = getRateLimitConfig();
+  const moodleHost = BASE_URL ? new URL(BASE_URL).host : '';
 
   let attempt = 0;
   let lastError: Error | null = null;
@@ -141,6 +156,13 @@ export async function moodleWebserviceRequest<T = unknown>(options: MoodleReques
       return responseData as T;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (isDnsResolutionError(error)) {
+        throw new Error(
+          `Unable to resolve Moodle host "${moodleHost || 'unknown'}". Check NEXT_PUBLIC_MOODLE_URL and local DNS/network settings.`,
+        );
+      }
+
       if (attempt >= maxRetries) {
         throw lastError;
       }

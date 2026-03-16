@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.995.0",
-    "@prisma/client": "^6.4.1",
+    "@prisma/client": "^6.19.2",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.2",
     "date-fns": "^4.1.0",
@@ -36,10 +36,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.27",
     "eslint": "^9.39.3",
     "eslint-config-next": "16.1.6",
-    "prisma": "^6.4.1",
-    "tailwindcss": "^4",
+    "postcss": "^8.5.6",
+    "prisma": "^6.19.2",
+    "tailwindcss": "^4.2.1",
     "ts-node": "^10.9.2",
     "typescript": "^5"
   }

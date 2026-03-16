@@ -1,111 +1,145 @@
 'use server';
 
-import { enrolUser } from '@/lib/moodle/index';
+import crypto from 'crypto';
 import { cookies } from 'next/headers';
-import { getCoursePriceInfo } from '@/lib/moodle/courses';
 import { getUserId } from '@/app/(auth)/login/actions';
-import { redirect } from 'next/navigation';
-/**
- * 1. Shared Helper to initialize Safepay Session
- * This prevents "Session Validation" errors by performing the official handshake.
- */
-async function generateSafepayLink(courseId: number, amount: number, userId: string) {
-    try {
-        const response = await fetch("https://sandbox.api.getsafepay.com/order/v1/init", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                client: process.env.SAFEPAY_PUBLIC_KEY,
-                amount: Number(amount), // Ensure it's a number, not "100"
-                currency: "PKR",
-                environment: "sandbox",
-                mode: "payment",
-                intent: "CYBERSOURCE",
-                redirect_url: `${process.env.NEXT_PUBLIC_URL}/payment-success`,
-                cancel_url: `${process.env.NEXT_PUBLIC_URL}/course/${courseId}`,
-                // ADD THESE FOR BETTER REDIRECT HANDLING:
-      // ADD THIS:
-    metadata: {
-        order_id: `${courseId}-${userId}`
-    },
-    configuration: {
-        success_url: `${process.env.NEXT_PUBLIC_URL}/payment-success`,
-        auto_redirect: true // Some API versions support this flag
-    }
-            })
-        });
 
-        const resData = await response.json();
-        
-        // Debug: Log the response to see if Safepay is returning an error message
-        console.log("Safepay Init Response:", JSON.stringify(resData));
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
-        if (!resData.status || !resData.data?.token) {
-            throw new Error(resData.status?.message || 'No token received');
-        }
- 
-        // Use the 'checkout' endpoint instead of 'components' if components fails
-   const token = resData.data.token;
-const publicKey = process.env.SAFEPAY_PUBLIC_KEY!;
-const baseUrl = "https://sandbox.api.getsafepay.com/checkout";
+const MERCHANT_ID = process.env.PAYFAST_MERCHANT_ID || (IS_PRODUCTION ? '27315' : '27315');
+const SECURED_KEY = process.env.PAYFAST_SECURED_KEY || (IS_PRODUCTION ? 'ZqyCrJzLAzosYGMH7ahpp81DK-' : 'ZqyCrJzLAzosYGMH7ahpp81DK-');
 
-// 2. Use the standard parameter mapping
-const url = `${baseUrl}?env=sandbox` +
-            `&beacon=${token}` +
-            `&client_id=${publicKey}` + // Use client_id here
-            `&order_id=${courseId}-${userId}`; // Remove source=custom
+const DEFAULT_TOKEN_URL = IS_PRODUCTION
+  ? 'https://ipg1.apps.net.pk/Ecommerce/api/Transaction/GetAccessToken'
+  : 'https://ipg1.apps.net.pk/Ecommerce/api/Transaction/GetAccessToken';
+const DEFAULT_PAYFAST_URL = IS_PRODUCTION
+  ? 'https://ipg1.apps.net.pk/Ecommerce/api/Transaction/PostTransaction'
+  : 'https://ipg1.apps.net.pk/Ecommerce/api/Transaction/PostTransaction';
 
-console.log("🔗 ATTEMPTING NEW ENDPOINT:", url);
-return url;
+const TOKEN_URL = process.env.PAYFAST_TOKEN_URL || process.env.TOKEN_URL || DEFAULT_TOKEN_URL;
+const PAYFAST_URL = process.env.PAYFAST_URL || DEFAULT_PAYFAST_URL;
 
-    } catch (error: unknown) {
-        console.error("❌ SAFEPAY ERROR:", error instanceof Error ? error.message : error);
-        return `${process.env.NEXT_PUBLIC_URL}/payment-error`;
-    }
+function isDnsResolutionError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const maybeError = error as { code?: unknown; cause?: unknown };
+
+  const directCode = typeof maybeError.code === 'string' ? maybeError.code : '';
+  if (directCode === 'ENOTFOUND' || directCode === 'EAI_AGAIN') return true;
+
+  if (!maybeError.cause || typeof maybeError.cause !== 'object') return false;
+  const causeCode = typeof (maybeError.cause as { code?: unknown }).code === 'string'
+    ? (maybeError.cause as { code?: string }).code
+    : '';
+
+  return causeCode === 'ENOTFOUND' || causeCode === 'EAI_AGAIN';
 }
 
-function isNextRedirectError(error: unknown): error is { message?: string; digest?: string } {
-    if (typeof error !== 'object' || error === null) return false;
-    const candidate = error as { message?: unknown; digest?: unknown };
-    return typeof candidate.message === 'string' || typeof candidate.digest === 'string';
-}
-/**
- * 2. Action for users who are already logged in
- */
-export async function enrollExistingUser(courseId: number) {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('moodle_token')?.value;
+export async function enrollExistingUser(courseId: number, amount: number) {
+  const cookieStore = await cookies();
+  const moodleToken = cookieStore.get('moodle_token')?.value;
+  if (!moodleToken) return { error: 'Not logged in' };
 
-    if (!token) return { error: 'Not logged in' };
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    return { error: 'Invalid amount' };
+  }
 
-    try {
-        const userId = await getUserId(token);
-        if (!userId) return { error: 'Could not retrieve user profile' };
+  const payableAmount = Math.max(1, Math.round(numericAmount));
 
-        const courseInfo = await getCoursePriceInfo(courseId);
-        const isPaidCourse = courseInfo && courseInfo.price > 0;
+  console.log("NODE_ENV:", process.env.NODE_ENV);
+  console.log("TOKEN_URL:", TOKEN_URL);
+  console.log("PAYFAST_URL:", PAYFAST_URL);
+  try {
+    // 1️⃣ Get User ID
+    const userId = await getUserId(moodleToken);
 
-        if (isPaidCourse) {
-           const checkoutUrl = await generateSafepayLink(courseId, courseInfo.price, userId.toString());
-        
-        // 3. CALL REDIRECT HERE
-        redirect(checkoutUrl);
-        }
+    // 2️⃣ Generate Basket/Order ID
+    const bId = `INV${courseId}${userId}${Date.now()}`;
 
-        // Free Course: Direct enrollment
-        await enrolUser(userId, courseId);
-        return { success: true, redirectUrl: `/course/${courseId}/learn` };
+    const transAmount = payableAmount.toString();
 
-    } catch (error: unknown) {
-    // Mature check: Next.js redirects are technically special "errors"
-    if (
-        isNextRedirectError(error) &&
-        (error.message === 'NEXT_REDIRECT' || error.digest?.includes('NEXT_REDIRECT'))
-    ) {
-        throw error; 
+    // 3️⃣ Get Access Token from PayFast
+    const authRes = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        merchant_id: MERCHANT_ID,
+        secured_key: SECURED_KEY,
+        grant_type: 'client_credentials',
+        basket_id: bId,
+        txnamt: transAmount,
+        currency_code: 'PKR'
+      })
+    });
+
+    if (!authRes.ok) {
+      throw new Error(`PayFast token request failed: ${authRes.status} ${authRes.statusText}`);
     }
 
-    console.error("Actual Enrollment Error:", error);
-    return { error: error instanceof Error ? error.message : 'Enrollment failed' };
+    const authData = await authRes.json();
+    const accessTokenRaw = authData.ACCESS_TOKEN || authData.access_token || authData.TOKEN;
+    const accessToken = typeof accessTokenRaw === 'string' ? accessTokenRaw.trim() : '';
+    if (!accessToken) {
+      const description = authData.errorDescription || authData.message || 'Failed to get PayFast Access Token';
+      throw new Error(description);
     }
+
+    // 4️⃣ Prepare payload (do NOT send to PayFast yet)
+    const now = new Date();
+    const pktDate = new Date(now.getTime() + (5 * 60 + now.getTimezoneOffset()) * 60000);
+    const orderDate = pktDate.toISOString().slice(0, 19).replace('T', ' ');
+
+    const hashString = `${MERCHANT_ID}${bId}${orderDate}${transAmount}`;
+    const signature = crypto.createHmac('sha256', SECURED_KEY)
+      .update(hashString)
+      .digest('hex')
+      .toUpperCase();
+
+    const successUrl = `${process.env.NEXT_PUBLIC_URL}/payment-success?basketId=${bId}&courseId=${courseId}`;
+    const failureUrl = `${process.env.NEXT_PUBLIC_URL}/payment-error`;
+
+    const paymentData = {
+      MERCHANT_ID,
+      merchant_id: MERCHANT_ID,
+      BASKET_ID: bId,
+      basket_id: bId,
+      ORDER_DATE: orderDate,
+      order_date: orderDate,
+      TXNAMT: transAmount,
+      txnamt: transAmount,
+      SIGNATURE: signature,
+      signature,
+      TOKEN: accessToken,
+      token: accessToken,
+      PROCCODE: '00',
+      proccode: '00',
+      TRAN_TYPE: 'ECOMM_PURCHASE',
+      tran_type: 'ECOMM_PURCHASE',
+      CURRENCY_CODE: 'PKR',
+      currency_code: 'PKR',
+      SUCCESS_URL: successUrl,
+      success_url: successUrl,
+      FAILURE_URL: failureUrl,
+      failure_url: failureUrl,
+      CUSTOMER_MOBILE_NO: '03001234567',
+      customer_mobile_no: '03001234567',
+      CUSTOMER_EMAIL_ADDRESS: 'test@example.com',
+      customer_email_address: 'test@example.com',
+      CHECKOUT_JS: '1',
+      checkout_js: '1',
+    };
+
+    return { paymentData, actionUrl: PAYFAST_URL, basketId: bId };
+  } catch (err: any) {
+    if (isDnsResolutionError(err)) {
+      const tokenHost = new URL(TOKEN_URL).host;
+      console.error('Enroll Error: PayFast host DNS lookup failed', { tokenHost });
+      return {
+        error: `Unable to resolve payment gateway host (${tokenHost}). Please verify PAYFAST_TOKEN_URL/PAYFAST_URL and local DNS/network settings.`
+      };
+    }
+
+    console.error('Enroll Error:', err);
+    return { error: err.message || 'Enrollment initialization failed' };
+  }
 }
