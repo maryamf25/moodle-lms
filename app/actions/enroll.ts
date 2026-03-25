@@ -1,6 +1,6 @@
 
 'use server';
-
+import crypto from 'crypto';
 import { loginUser, registerUser, enrolUser, getUserByEmail } from '@/lib/moodle/index';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -109,11 +109,9 @@ export async function quickEnroll(prevState: unknown, formData: FormData): Promi
         const isPaidCourse = courseInfo && courseInfo.price > 0;
 
         if (isPaidCourse) {
-        const checkoutUrl = await generateSafepayLink(
-            courseId, 
-            courseInfo.price, 
-            userId!.toString()
-        );
+const orderId = `${courseId}-${userId}`;
+const checkoutUrl = generatePayFastLink(orderId, courseInfo.price);
+ 
 
         const cookieStore = await cookies();
         cookieStore.set('moodle_token', loginRes.token, {
@@ -166,57 +164,23 @@ export async function quickEnroll(prevState: unknown, formData: FormData): Promi
     return { error: error instanceof Error ? error.message : 'Enrollment failed' };
     }
 }
-async function generateSafepayLink(courseId: number, amount: number, userId: string) {
-    try {
-        const response = await fetch("https://sandbox.api.getsafepay.com/order/v1/init", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                client: process.env.SAFEPAY_PUBLIC_KEY,
-                amount: Number(amount), // Ensure it's a number, not "100"
-                currency: "PKR",
-                environment: "sandbox",
-                mode: "payment",
-                intent: "CYBERSOURCE",
-                redirect_url: `${process.env.NEXT_PUBLIC_URL}/payment-success`,
-                cancel_url: `${process.env.NEXT_PUBLIC_URL}/course/${courseId}`,
-                // ADD THESE FOR BETTER REDIRECT HANDLING:
-// ADD THIS:
-    metadata: {
-        order_id: `${courseId}-${userId}`
-    },
-    configuration: {
+async function generatePayFastLink(courseId: string | number, amount: number, userId: string) {
+    const merchantId = "27315"; // 
+    const securedKey = "ZqyCrJzLAzosYGMH7ahpp81DK-"; // 
+    
+    // Updated to the correct PayFast Sandbox Checkout URL
+    const baseUrl = "https://ipg1.apps.net.pk/ipg/payment/checkout"; 
+    
+    const basketId = `${courseId}-${userId}`;
+
+    const params = new URLSearchParams({
+        merchant_id: merchantId,
+        merchant_secured_key: securedKey,
+        basket_id: basketId,
+        trans_amount: amount.toString(),
         success_url: `${process.env.NEXT_PUBLIC_URL}/payment-success`,
-        auto_redirect: true // Some API versions support this flag
-    }
-            })
-        });
+        fail_url: `${process.env.NEXT_PUBLIC_URL}/payment-error`,
+    });
 
-        const resData = await response.json() as SafepayInitResponse;
-        
-        // Debug: Log the response to see if Safepay is returning an error message
-        console.log("Safepay Init Response:", JSON.stringify(resData));
-
-        if (!resData.status || !resData.data?.token) {
-            throw new Error(resData.status?.message || 'No token received');
-        }
-
-        
-  const token = resData.data.token;
-const publicKey = process.env.SAFEPAY_PUBLIC_KEY!;
-const baseUrl = "https://sandbox.api.getsafepay.com/checkout";
-
-// 2. Use the standard parameter mapping
-const url = `${baseUrl}?env=sandbox` +
-            `&beacon=${token}` +
-            `&client_id=${publicKey}` + // Use client_id here
-            `&order_id=${courseId}-${userId}`; // Remove source=custom
-
-console.log("🔗 ATTEMPTING NEW ENDPOINT:", url);
-return url;
-
-    } catch (error: unknown) {
-        console.error("❌ SAFEPAY ERROR:", error instanceof Error ? error.message : error);
-        return `${process.env.NEXT_PUBLIC_URL}/payment-error`;
-    }
+    return `${baseUrl}?${params.toString()}`;
 }

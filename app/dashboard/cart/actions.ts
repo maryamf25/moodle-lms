@@ -218,26 +218,36 @@ export async function getCartAction() {
       };
     }
 
-    const cartItems = await prisma.cartItem.findMany({
-      where: { userId: user.id },
-      include: {
-        course: {
-          select: {
-            id: true,
-            moodleCourseId: true,
-            fullname: true,
-            shortname: true,
-            price: true,
-          },
-        },
+   // Replace the return in your getCartAction function
+const cartItems = await prisma.cartItem.findMany({
+  where: { userId: user.id },
+  include: {
+    course: {
+      select: {
+        id: true,
+        moodleCourseId: true,
+        fullname: true,
+        shortname: true,
+        price: true,
       },
-      orderBy: { addedAt: 'desc' },
-    });
+    },
+  },
+  orderBy: { addedAt: 'desc' },
+});
 
-    return {
-      ok: true,
-      data: cartItems,
-    };
+// Map the items to ensure the price is a serializable number
+const serializedItems = cartItems.map(item => ({
+  ...item,
+  course: {
+    ...item.course,
+    price: Number(item.course.price) // Convert Decimal to Number
+  }
+}));
+
+return {
+  ok: true,
+  data: serializedItems,
+};
   } catch (error) {
     console.error('[cart] getCart error:', error);
     return {
