@@ -6,7 +6,7 @@ import { purchaseLicenseAction } from './actions';
 export default function PurchaseForm({ courses }: { courses: any[] }) {
     const [state, formAction, isPending] = useActionState(
         async (prevState: any, formData: FormData) => {
-            return await purchaseLicenseAction(formData);
+            return await purchaseLicenseAction(prevState, formData);
         },
         null
     );
